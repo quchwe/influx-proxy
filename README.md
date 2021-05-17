@@ -171,6 +171,7 @@ The following commands are forbid.
 * `SELECT INTO`
 * `ON clause`
 * `Multiple queries` delimited by semicolon `;`
+* `Multiple measurements` delimited by comma `,`
 
 #### Supported commands
 

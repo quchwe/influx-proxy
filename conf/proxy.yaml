@@ -1,7 +1,7 @@
 BACKENDS:
   influxdb-1:
-    url: http://127.0.0.1:8086
-    db: test1
+    url: "http://127.0.0.1:8086"
+    db: "test1"
     username: ""
     password: ""
     flush_size: 10000
@@ -11,8 +11,8 @@ BACKENDS:
     rewrite_interval: 10000
     conn_pool_size: 20
   influxdb-2:
-    url: http://127.0.0.1:8087
-    db: test2
+    url: "http://127.0.0.1:8087"
+    db: "test2"
     username: ""
     password: ""
     flush_size: 10000
@@ -22,18 +22,15 @@ BACKENDS:
     rewrite_interval: 10000
     conn_pool_size: 20
 KEYMAPS:
-  cpu:
-    - influxdb-1
-  mem:
-    - influxdb-2
-  _default_:
-    - influxdb-1
+  cpu: ["influxdb-1"]
+  mem: ["influxdb-2"]
+  _default_: ["influxdb-1"]
 NODE:
   listen_addr: ":7076"
-  db: test
+  db: "test"
   username: ""
   password: ""
-  data_dir: data
+  data_dir: "data"
   log_path: ""
   idle_timeout: 10000
   stat_interval: 10000
