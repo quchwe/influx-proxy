@@ -10,9 +10,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-const (
-	Version = "1.4.8"
-)
+var Version = "not build"
 
 type NodeConfig struct {
 	ListenAddr   string `mapstructure:"listen_addr"`
