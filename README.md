@@ -201,6 +201,14 @@ There are three tools for benchmarking InfluxDB, which can also be applied to In
 * [influxdb-comparisons](https://github.com/influxdata/influxdb-comparisons) contains code for benchmarking InfluxDB against other databases and time series solutions.
 * [tsbs](https://github.com/timescale/tsbs) (Time Series Benchmark Suite) is a tool for comparing and evaluating databases for time series data.
 
+Tool
+-----------
+
+There are two tools for InfluxDB and InfluxDB Proxy:
+
+* [influx-tool](https://github.com/chengshiwen/influx-tool): high performance tool to rebalance, recovery, resync, cleanup and compact. most commands do not require InfluxDB to start
+* [influx-tool-v0.1](https://github.com/chengshiwen/influx-tool-v0.1): export tool to extend the official tool `influx_inspect export`, no longer updated
+
 License
 -------
 
