@@ -19,16 +19,14 @@ import (
 )
 
 var (
-	ConfigFile string
-	Version    bool
-	GitCommit  = "not build"
-	BuildTime  = "not build"
+	configFile string
+	version    bool
 )
 
 func init() {
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds | log.Lshortfile)
-	flag.StringVar(&ConfigFile, "config", "proxy.json", "proxy config file with json/yaml/toml format")
-	flag.BoolVar(&Version, "version", false, "proxy version")
+	flag.StringVar(&configFile, "config", "proxy.json", "proxy config file with json/yaml/toml format")
+	flag.BoolVar(&version, "version", false, "proxy version")
 	flag.Parse()
 }
 
@@ -69,17 +67,21 @@ func pathExist(path string) (bool, error) {
 	return false, err
 }
 
+func printVersion() {
+	fmt.Printf("Version:    %s\n", backend.Version)
+	fmt.Printf("Git commit: %s\n", backend.GitCommit)
+	fmt.Printf("Build time: %s\n", backend.BuildTime)
+	fmt.Printf("Go version: %s\n", runtime.Version())
+	fmt.Printf("OS/Arch:    %s/%s\n", runtime.GOOS, runtime.GOARCH)
+}
+
 func main() {
-	if Version {
-		fmt.Printf("Version:    %s\n", backend.Version)
-		fmt.Printf("Git commit: %s\n", GitCommit)
-		fmt.Printf("Build time: %s\n", BuildTime)
-		fmt.Printf("Go version: %s\n", runtime.Version())
-		fmt.Printf("OS/Arch:    %s/%s\n", runtime.GOOS, runtime.GOARCH)
+	if version {
+		printVersion()
 		return
 	}
 
-	fcs, err := backend.NewFileConfigSource(ConfigFile)
+	fcs, err := backend.NewFileConfigSource(configFile)
 	if err != nil {
 		fmt.Printf("illegal config file: %s\n", err)
 		return
@@ -88,7 +90,7 @@ func main() {
 
 	initLog(nodecfg.LogPath)
 	makeDir(nodecfg.DataDir)
-	log.Printf("version: %s, commit: %s, build: %s", backend.Version, GitCommit, BuildTime)
+	log.Printf("version: %s, commit: %s, build: %s", backend.Version, backend.GitCommit, backend.BuildTime)
 
 	ic := backend.NewInfluxCluster(fcs, &nodecfg)
 	err = ic.LoadConfig()

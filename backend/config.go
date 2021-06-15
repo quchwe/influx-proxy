@@ -10,7 +10,11 @@ import (
 	"github.com/spf13/viper"
 )
 
-var Version = "not build"
+var (
+	Version   = "not build"
+	GitCommit = "not build"
+	BuildTime = "not build"
+)
 
 type NodeConfig struct {
 	ListenAddr   string `mapstructure:"listen_addr"`
