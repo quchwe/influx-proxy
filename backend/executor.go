@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -38,7 +39,14 @@ func GzipCompress(b []byte) (cb []byte, err error) {
 
 func Write(w http.ResponseWriter, body []byte, gzip bool) {
 	if gzip {
-		gzipBody, _ := GzipCompress(body)
+		gzipBody, err := GzipCompress(body)
+		if err != nil {
+			log.Printf("gzip compress error: %s", err)
+			rsp := ResponseFromError(err.Error())
+			body = rsp.Marshal(false)
+			w.Write(body)
+			return
+		}
 		w.Write(gzipBody)
 	} else {
 		w.Write(body)
