@@ -6,6 +6,7 @@ package backend
 
 import (
 	"bytes"
+	"compress/gzip"
 	"fmt"
 	"io"
 	"log"
@@ -14,7 +15,6 @@ import (
 	"sync"
 
 	"github.com/influxdata/influxdb1-client/models"
-	gzip "github.com/klauspost/pgzip"
 )
 
 type InfluxQLExecutor struct {

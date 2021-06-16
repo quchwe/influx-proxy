@@ -5,6 +5,7 @@
 package service
 
 import (
+	"compress/gzip"
 	"errors"
 	"io/ioutil"
 	"log"
@@ -12,7 +13,6 @@ import (
 	"net/http/pprof"
 
 	"github.com/chengshiwen/influx-proxy/backend"
-	gzip "github.com/klauspost/pgzip"
 )
 
 var (
