@@ -71,6 +71,11 @@ func NewFileConfig(cfgfile string) (cfg *ProxyConfig, err error) {
 	if err != nil {
 		return
 	}
+	viper.WatchConfig()
+	return NewFileConfigWithViper()
+}
+
+func NewFileConfigWithViper() (cfg *ProxyConfig, err error) {
 	cfg = &ProxyConfig{}
 	err = viper.Unmarshal(cfg)
 	if err != nil {
@@ -158,4 +163,13 @@ func (cfg *ProxyConfig) String() string {
 	json := jsoniter.Config{TagKey: "mapstructure"}.Froze()
 	b, _ := json.Marshal(cfg)
 	return string(b)
+}
+
+// KeepWith will ignore some config items.
+func (cfg *ProxyConfig) KeepWith(ofc *ProxyConfig) {
+	cfg.ListenAddr = ofc.ListenAddr
+	cfg.IdleTimeout = ofc.IdleTimeout
+	cfg.HTTPSEnabled = ofc.HTTPSEnabled
+	cfg.HTTPSCert = ofc.HTTPSCert
+	cfg.HTTPSKey = ofc.HTTPSKey
 }

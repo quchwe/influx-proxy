@@ -30,9 +30,9 @@ func ReadPromQL(w http.ResponseWriter, req *http.Request, ip *Proxy, db, meas st
 	key := GetKey(db, meas)
 
 	// pass non-active, rewriting or write-only.
-	perms := rand.Perm(len(ip.Circles))
+	perms := rand.Perm(len(ip.Circles()))
 	for _, p := range perms {
-		be := ip.Circles[p].GetBackend(key)
+		be := ip.Circle(p).GetBackend(key)
 		if !be.IsActive() || be.IsRewriting() || be.IsWriteOnly() {
 			continue
 		}
@@ -69,9 +69,9 @@ func QueryFromQL(w http.ResponseWriter, req *http.Request, ip *Proxy, tokens []s
 	key := GetKey(db, meas)
 
 	// pass non-active, rewriting or write-only.
-	perms := rand.Perm(len(ip.Circles))
+	perms := rand.Perm(len(ip.Circles()))
 	for _, p := range perms {
-		be := ip.Circles[p].GetBackend(key)
+		be := ip.Circle(p).GetBackend(key)
 		if !be.IsActive() || be.IsRewriting() || be.IsWriteOnly() {
 			continue
 		}

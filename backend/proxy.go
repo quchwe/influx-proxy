@@ -20,7 +20,8 @@ import (
 )
 
 type Proxy struct {
-	Circles []*Circle
+	lock    sync.RWMutex
+	circles []*Circle
 	dbSet   util.Set
 }
 
@@ -31,17 +32,63 @@ func NewProxy(cfg *ProxyConfig) (ip *Proxy) {
 		return
 	}
 	ip = &Proxy{
-		Circles: make([]*Circle, len(cfg.Circles)),
-		dbSet:   util.NewSet(),
-	}
-	for idx, circfg := range cfg.Circles {
-		ip.Circles[idx] = NewCircle(circfg, cfg, idx)
-	}
-	for _, db := range cfg.DBList {
-		ip.dbSet.Add(db)
+		circles: newCircles(cfg),
+		dbSet:   newDBSet(cfg),
 	}
 	rand.Seed(time.Now().UnixNano())
 	return
+}
+
+func newCircles(cfg *ProxyConfig) []*Circle {
+	circles := make([]*Circle, len(cfg.Circles))
+	for idx, circfg := range cfg.Circles {
+		circles[idx] = NewCircle(circfg, cfg, idx)
+	}
+	return circles
+}
+
+func newDBSet(cfg *ProxyConfig) util.Set {
+	dbSet := util.NewSet()
+	for _, db := range cfg.DBList {
+		dbSet.Add(db)
+	}
+	return dbSet
+}
+
+func (ip *Proxy) ReloadConfig(cfg *ProxyConfig) error {
+	err := util.MakeDir(cfg.DataDir)
+	if err != nil {
+		return err
+	}
+
+	circles := newCircles(cfg)
+	dbSet := newDBSet(cfg)
+
+	ip.lock.Lock()
+	oldCircles := ip.circles
+	ip.circles = circles
+	ip.dbSet = dbSet
+	ip.lock.Unlock()
+
+	for _, c := range oldCircles {
+		c.Close()
+	}
+	return nil
+}
+
+func (ip *Proxy) Circles() []*Circle {
+	ip.lock.RLock()
+	defer ip.lock.RUnlock()
+	return ip.circles
+}
+
+func (ip *Proxy) Circle(idx int) *Circle {
+	ip.lock.RLock()
+	defer ip.lock.RUnlock()
+	if idx < 0 || idx >= len(ip.circles) {
+		return nil
+	}
+	return ip.circles[idx]
 }
 
 func GetKey(db, meas string) string {
@@ -54,20 +101,22 @@ func GetKey(db, meas string) string {
 }
 
 func (ip *Proxy) GetBackends(key string) []*Backend {
-	backends := make([]*Backend, len(ip.Circles))
-	for i, circle := range ip.Circles {
+	circles := ip.Circles()
+	backends := make([]*Backend, len(circles))
+	for i, circle := range circles {
 		backends[i] = circle.GetBackend(key)
 	}
 	return backends
 }
 
 func (ip *Proxy) GetAllBackends() []*Backend {
+	circles := ip.Circles()
 	capacity := 0
-	for _, circle := range ip.Circles {
+	for _, circle := range circles {
 		capacity += len(circle.Backends)
 	}
 	backends := make([]*Backend, 0, capacity)
-	for _, circle := range ip.Circles {
+	for _, circle := range circles {
 		backends = append(backends, circle.Backends...)
 	}
 	return backends
@@ -75,8 +124,9 @@ func (ip *Proxy) GetAllBackends() []*Backend {
 
 func (ip *Proxy) GetHealth(stats bool) []interface{} {
 	var wg sync.WaitGroup
-	health := make([]interface{}, len(ip.Circles))
-	for i, c := range ip.Circles {
+	circles := ip.Circles()
+	health := make([]interface{}, len(circles))
+	for i, c := range circles {
 		wg.Add(1)
 		go func(i int, c *Circle) {
 			defer wg.Done()
@@ -88,6 +138,8 @@ func (ip *Proxy) GetHealth(stats bool) []interface{} {
 }
 
 func (ip *Proxy) IsForbiddenDB(db string) bool {
+	ip.lock.RLock()
+	defer ip.lock.RUnlock()
 	return db == "_internal" || (len(ip.dbSet) > 0 && !ip.dbSet[db])
 }
 
@@ -211,7 +263,7 @@ func (ip *Proxy) ReadProm(w http.ResponseWriter, req *http.Request, db, metric s
 }
 
 func (ip *Proxy) Close() {
-	for _, c := range ip.Circles {
+	for _, c := range ip.Circles() {
 		c.Close()
 	}
 }

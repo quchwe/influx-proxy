@@ -3,6 +3,7 @@ module github.com/chengshiwen/influx-proxy
 go 1.16
 
 require (
+	github.com/fsnotify/fsnotify v1.5.1
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/snappy v0.0.3
 	github.com/influxdata/influxdb1-client v0.0.0-20220302092344-a9ab5670611c

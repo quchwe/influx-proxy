@@ -14,18 +14,22 @@ import (
 	"log"
 	"net/http"
 	"net/http/pprof"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync/atomic"
 
 	"github.com/chengshiwen/influx-proxy/backend"
 	"github.com/chengshiwen/influx-proxy/service/prometheus"
 	"github.com/chengshiwen/influx-proxy/service/prometheus/remote"
 	"github.com/chengshiwen/influx-proxy/transfer"
 	"github.com/chengshiwen/influx-proxy/util"
+	"github.com/fsnotify/fsnotify"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/spf13/viper"
 )
 
 var (
@@ -37,27 +41,63 @@ var (
 )
 
 type HttpService struct { // nolint:golint
+	cfg          *backend.ProxyConfig
 	ip           *backend.Proxy
 	tx           *transfer.Transfer
-	username     string
-	password     string
-	authEncrypt  bool
-	writeTracing bool
-	queryTracing bool
+	username     atomic.Value
+	password     atomic.Value
+	authEncrypt  atomic.Value
+	writeTracing atomic.Value
+	queryTracing atomic.Value
 }
 
 func NewHttpService(cfg *backend.ProxyConfig) (hs *HttpService) { // nolint:golint
 	ip := backend.NewProxy(cfg)
 	hs = &HttpService{
-		ip:           ip,
-		tx:           transfer.NewTransfer(cfg, ip.Circles),
-		username:     cfg.Username,
-		password:     cfg.Password,
-		authEncrypt:  cfg.AuthEncrypt,
-		writeTracing: cfg.WriteTracing,
-		queryTracing: cfg.QueryTracing,
+		ip: ip,
+		tx: transfer.NewTransfer(cfg, ip.Circles()),
 	}
+	hs.setConfig(cfg)
+	viper.OnConfigChange(func(e fsnotify.Event) {
+		if e.Op&fsnotify.Write != fsnotify.Write {
+			return
+		}
+		nfc, err := backend.NewFileConfigWithViper()
+		if err != nil {
+			log.Printf("watch config error: %s", err)
+			return
+		}
+		// log.Printf("watch config changed: %s", nfc)
+		hs.ReloadConfig(nfc)
+	})
 	return
+}
+
+func (hs *HttpService) setConfig(cfg *backend.ProxyConfig) {
+	hs.cfg = cfg
+	hs.username.Store(cfg.Username)
+	hs.password.Store(cfg.Password)
+	hs.authEncrypt.Store(cfg.AuthEncrypt)
+	hs.writeTracing.Store(cfg.WriteTracing)
+	hs.queryTracing.Store(cfg.QueryTracing)
+}
+
+func (hs *HttpService) ReloadConfig(nfc *backend.ProxyConfig) {
+	nfc.KeepWith(hs.cfg)
+	if reflect.DeepEqual(nfc, hs.cfg) {
+		log.Printf("watch config changed, but ignored, and this change should be rolled back: listen_addr, idle_timeout, https_enabled, https_cert, https_key")
+		return
+	}
+	log.Printf("watch config reloading")
+	err := hs.ip.ReloadConfig(nfc)
+	if err != nil {
+		log.Printf("watch config reload error: %s", err)
+		return
+	}
+	hs.tx.ReloadConfig(nfc, hs.ip.Circles())
+	hs.setConfig(nfc)
+	nfc.PrintSummary()
+	log.Printf("watch config reloaded")
 }
 
 func (hs *HttpService) Register(mux *http.ServeMux) {
@@ -101,7 +141,7 @@ func (hs *HttpService) HandlerQuery(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	hs.WriteBody(w, body)
-	if hs.queryTracing {
+	if hs.isQueryTracing() {
 		log.Printf("query: %s %s %s, client: %s", req.Method, db, q, req.RemoteAddr)
 	}
 }
@@ -151,7 +191,7 @@ func (hs *HttpService) HandlerWrite(w http.ResponseWriter, req *http.Request) {
 	if err == nil {
 		hs.WriteHeader(w, 204)
 	}
-	if hs.writeTracing {
+	if hs.isWriteTracing() {
 		log.Printf("write: %s %s %s %s, client: %s", db, rp, precision, p, req.RemoteAddr)
 	}
 }
@@ -178,7 +218,7 @@ func (hs *HttpService) HandlerReplica(w http.ResponseWriter, req *http.Request) 
 		backends := hs.ip.GetBackends(key)
 		data := make([]map[string]interface{}, len(backends))
 		for i, b := range backends {
-			c := hs.ip.Circles[i]
+			c := hs.ip.Circle(i)
 			data[i] = map[string]interface{}{
 				"backend": map[string]string{"name": b.Name, "url": b.Url},
 				"circle":  map[string]interface{}{"id": c.CircleId, "name": c.Name},
@@ -245,12 +285,12 @@ func (hs *HttpService) HandlerRebalance(w http.ResponseWriter, req *http.Request
 		}
 		for _, bkcfg := range body.Backends {
 			backends = append(backends, backend.NewSimpleBackend(bkcfg))
-			hs.tx.CircleStates[circleId].Stats[bkcfg.Url] = &transfer.Stats{}
+			hs.tx.CircleState(circleId).Stats[bkcfg.Url] = &transfer.Stats{}
 		}
 	}
-	backends = append(backends, hs.ip.Circles[circleId].Backends...)
+	backends = append(backends, hs.ip.Circle(circleId).Backends...)
 
-	if hs.tx.CircleStates[circleId].Transferring {
+	if hs.tx.CircleState(circleId).Transferring {
 		hs.WriteText(w, 400, fmt.Sprintf("circle %d is transferring", circleId))
 		return
 	}
@@ -291,7 +331,7 @@ func (hs *HttpService) HandlerRecovery(w http.ResponseWriter, req *http.Request)
 		return
 	}
 
-	if hs.tx.CircleStates[fromCircleId].Transferring || hs.tx.CircleStates[toCircleId].Transferring {
+	if hs.tx.CircleState(fromCircleId).Transferring || hs.tx.CircleState(toCircleId).Transferring {
 		hs.WriteText(w, 400, fmt.Sprintf("circle %d or %d is transferring", fromCircleId, toCircleId))
 		return
 	}
@@ -324,7 +364,7 @@ func (hs *HttpService) HandlerResync(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	for _, cs := range hs.tx.CircleStates {
+	for _, cs := range hs.tx.CircleStates() {
 		if cs.Transferring {
 			hs.WriteText(w, 400, fmt.Sprintf("circle %d is transferring", cs.CircleId))
 			return
@@ -358,7 +398,7 @@ func (hs *HttpService) HandlerCleanup(w http.ResponseWriter, req *http.Request) 
 		return
 	}
 
-	if hs.tx.CircleStates[circleId].Transferring {
+	if hs.tx.CircleState(circleId).Transferring {
 		hs.WriteText(w, 400, fmt.Sprintf("circle %d is transferring", circleId))
 		return
 	}
@@ -384,8 +424,8 @@ func (hs *HttpService) HandlerTransferState(w http.ResponseWriter, req *http.Req
 	}
 
 	if req.Method == "GET" {
-		data := make([]map[string]interface{}, len(hs.tx.CircleStates))
-		for k, cs := range hs.tx.CircleStates {
+		data := make([]map[string]interface{}, len(hs.tx.CircleStates()))
+		for k, cs := range hs.tx.CircleStates() {
 			data[k] = map[string]interface{}{
 				"id":           cs.CircleId,
 				"name":         cs.Name,
@@ -417,7 +457,7 @@ func (hs *HttpService) HandlerTransferState(w http.ResponseWriter, req *http.Req
 				hs.WriteError(w, req, 400, "illegal transferring")
 				return
 			}
-			cs := hs.tx.CircleStates[circleId]
+			cs := hs.tx.CircleState(circleId)
 			cs.Transferring = transferring
 			cs.SetTransferIn(transferring)
 			state["circle"] = map[string]interface{}{
@@ -449,7 +489,7 @@ func (hs *HttpService) HandlerTransferStats(w http.ResponseWriter, req *http.Req
 
 	statsType := req.FormValue("type")
 	if statsType == "rebalance" || statsType == "recovery" || statsType == "resync" || statsType == "cleanup" {
-		hs.Write(w, req, 200, hs.tx.CircleStates[circleId].Stats)
+		hs.Write(w, req, 200, hs.tx.CircleState(circleId).Stats)
 	} else {
 		hs.WriteError(w, req, 400, "invalid stats type")
 	}
@@ -510,7 +550,7 @@ func (hs *HttpService) HandlerPromRead(w http.ResponseWriter, req *http.Request)
 		hs.WriteError(w, req, 400, err.Error())
 		return
 	}
-	if hs.queryTracing {
+	if hs.isQueryTracing() {
 		log.Printf("prometheus read: %s %s %v, client: %s", req.Method, db, q, req.RemoteAddr)
 	}
 }
@@ -539,7 +579,7 @@ func (hs *HttpService) HandlerPromWrite(w http.ResponseWriter, req *http.Request
 
 	_, err = buf.ReadFrom(body)
 	if err != nil {
-		if hs.writeTracing {
+		if hs.isWriteTracing() {
 			log.Printf("prom write handler unable to read bytes from request body")
 		}
 		hs.WriteError(w, req, 400, err.Error())
@@ -548,7 +588,7 @@ func (hs *HttpService) HandlerPromWrite(w http.ResponseWriter, req *http.Request
 
 	reqBuf, err := snappy.Decode(nil, buf.Bytes())
 	if err != nil {
-		if hs.writeTracing {
+		if hs.isWriteTracing() {
 			log.Printf("prom write handler unable to snappy decode from request body, error: %s", err)
 		}
 		hs.WriteError(w, req, 400, err.Error())
@@ -558,7 +598,7 @@ func (hs *HttpService) HandlerPromWrite(w http.ResponseWriter, req *http.Request
 	// Convert the Prometheus remote write request to Influx Points
 	var writeReq remote.WriteRequest
 	if err = proto.Unmarshal(reqBuf, &writeReq); err != nil {
-		if hs.writeTracing {
+		if hs.isWriteTracing() {
 			log.Printf("prom write handler unable to unmarshal from snappy decoded bytes, error: %s", err)
 		}
 		hs.WriteError(w, req, 400, err.Error())
@@ -567,7 +607,7 @@ func (hs *HttpService) HandlerPromWrite(w http.ResponseWriter, req *http.Request
 
 	points, err := prometheus.WriteRequestToPoints(&writeReq)
 	if err != nil {
-		if hs.writeTracing {
+		if hs.isWriteTracing() {
 			log.Printf("prom write handler, error: %s", err)
 		}
 		// Check if the error was from something other than dropping invalid values.
@@ -582,6 +622,14 @@ func (hs *HttpService) HandlerPromWrite(w http.ResponseWriter, req *http.Request
 	if err == nil {
 		hs.WriteHeader(w, 204)
 	}
+}
+
+func (hs *HttpService) isWriteTracing() bool {
+	return hs.writeTracing.Load().(bool)
+}
+
+func (hs *HttpService) isQueryTracing() bool {
+	return hs.queryTracing.Load().(bool)
 }
 
 func (hs *HttpService) Write(w http.ResponseWriter, req *http.Request, status int, data interface{}) {
@@ -634,16 +682,18 @@ func (hs *HttpService) checkMethod(w http.ResponseWriter, req *http.Request, met
 }
 
 func (hs *HttpService) checkAuth(w http.ResponseWriter, req *http.Request) bool {
-	if hs.username == "" && hs.password == "" {
+	username := hs.username.Load().(string)
+	password := hs.password.Load().(string)
+	if username == "" && password == "" {
 		return true
 	}
 	query := req.URL.Query()
 	u, p := query.Get("u"), query.Get("p")
-	if hs.transAuth(u) == hs.username && hs.transAuth(p) == hs.password {
+	if hs.transAuth(u) == username && hs.transAuth(p) == password {
 		return true
 	}
 	u, p, ok := req.BasicAuth()
-	if ok && hs.transAuth(u) == hs.username && hs.transAuth(p) == hs.password {
+	if ok && hs.transAuth(u) == username && hs.transAuth(p) == password {
 		return true
 	}
 	hs.WriteError(w, req, 401, "authentication failed")
@@ -651,7 +701,7 @@ func (hs *HttpService) checkAuth(w http.ResponseWriter, req *http.Request) bool 
 }
 
 func (hs *HttpService) transAuth(text string) string {
-	if hs.authEncrypt {
+	if hs.authEncrypt.Load().(bool) {
 		return util.AesEncrypt(text)
 	}
 	return text
@@ -700,7 +750,7 @@ func (hs *HttpService) formTick(req *http.Request) (int64, error) {
 
 func (hs *HttpService) formCircleId(req *http.Request, key string) (int, error) { // nolint:golint
 	circleId, err := strconv.Atoi(req.FormValue(key)) // nolint:golint
-	if err != nil || circleId < 0 || circleId >= len(hs.ip.Circles) {
+	if err != nil || circleId < 0 || circleId >= len(hs.ip.Circles()) {
 		return circleId, fmt.Errorf("invalid %s", key)
 	}
 	return circleId, nil

@@ -39,6 +39,8 @@ type QueryResult struct {
 }
 
 type Transfer struct {
+	lock sync.RWMutex
+
 	username     string
 	password     string
 	authEncrypt  bool
@@ -46,7 +48,7 @@ type Transfer struct {
 
 	pool         *ants.Pool
 	tlogDir      string
-	CircleStates []*CircleState
+	circleStates []*CircleState
 	Worker       int
 	Batch        int
 	Limit        int
@@ -57,19 +59,46 @@ type Transfer struct {
 func NewTransfer(cfg *backend.ProxyConfig, circles []*backend.Circle) (tx *Transfer) {
 	tx = &Transfer{
 		tlogDir:      cfg.TLogDir,
-		CircleStates: make([]*CircleState, len(cfg.Circles)),
+		circleStates: newCircleStates(cfg, circles),
 		Worker:       DefaultWorker,
 		Batch:        DefaultBatch,
 		Limit:        DefaultLimit,
 	}
-	for idx, circfg := range cfg.Circles {
-		tx.CircleStates[idx] = NewCircleState(circfg, circles[idx])
-	}
 	return
 }
 
+func newCircleStates(cfg *backend.ProxyConfig, circles []*backend.Circle) []*CircleState {
+	circleStates := make([]*CircleState, len(cfg.Circles))
+	for idx, circfg := range cfg.Circles {
+		circleStates[idx] = NewCircleState(circfg, circles[idx])
+	}
+	return circleStates
+}
+
+func (tx *Transfer) ReloadConfig(cfg *backend.ProxyConfig, circles []*backend.Circle) {
+	tx.lock.Lock()
+	defer tx.lock.Unlock()
+	tx.tlogDir = cfg.TLogDir
+	tx.circleStates = newCircleStates(cfg, circles)
+}
+
+func (tx *Transfer) CircleStates() []*CircleState {
+	tx.lock.RLock()
+	defer tx.lock.RUnlock()
+	return tx.circleStates
+}
+
+func (tx *Transfer) CircleState(idx int) *CircleState {
+	tx.lock.RLock()
+	defer tx.lock.RUnlock()
+	if idx < 0 || idx >= len(tx.circleStates) {
+		return nil
+	}
+	return tx.circleStates[idx]
+}
+
 func (tx *Transfer) resetCircleStates() {
-	for _, cs := range tx.CircleStates {
+	for _, cs := range tx.CircleStates() {
 		cs.ResetStates()
 	}
 }
@@ -98,7 +127,7 @@ func (tx *Transfer) setLogOutput(name string) {
 func (tx *Transfer) getDatabases() []string {
 	dbs := make([]string, 0)
 	dbm := make(map[string]bool)
-	for _, cs := range tx.CircleStates {
+	for _, cs := range tx.CircleStates() {
 		for _, be := range cs.Backends {
 			if be.IsActive() {
 				for _, db := range be.GetDatabases() {
@@ -119,7 +148,7 @@ func (tx *Transfer) createDatabases(dbs []string) ([]string, error) {
 	}
 	if len(dbs) > 0 {
 		backends := make([]*backend.Backend, 0)
-		for _, cs := range tx.CircleStates {
+		for _, cs := range tx.CircleStates() {
 			backends = append(backends, cs.Backends...)
 		}
 		for _, db := range dbs {
@@ -376,7 +405,7 @@ func (tx *Transfer) Rebalance(circleId int, backends []*backend.Backend, dbs []s
 	}
 	defer tx.pool.Release()
 	tlog.Printf("rebalance start: circle %d", circleId)
-	cs := tx.CircleStates[circleId]
+	cs := tx.CircleState(circleId)
 	tx.resetCircleStates()
 	tx.broadcastTransferring(cs, true)
 	defer tx.broadcastTransferring(cs, false)
@@ -413,8 +442,8 @@ func (tx *Transfer) Recovery(fromCircleId, toCircleId int, backendUrls []string,
 	}
 	defer tx.pool.Release()
 	tlog.Printf("recovery start: circle from %d to %d", fromCircleId, toCircleId)
-	fcs := tx.CircleStates[fromCircleId]
-	tcs := tx.CircleStates[toCircleId]
+	fcs := tx.CircleState(fromCircleId)
+	tcs := tx.CircleState(toCircleId)
 	tx.resetCircleStates()
 	tx.broadcastTransferring(tcs, true)
 	defer tx.broadcastTransferring(tcs, false)
@@ -467,7 +496,7 @@ func (tx *Transfer) Resync(dbs []string, tick int64) {
 	tx.broadcastResyncing(true)
 	defer tx.broadcastResyncing(false)
 
-	for _, cs := range tx.CircleStates {
+	for _, cs := range tx.CircleStates() {
 		tlog.Printf("resync start: circle %d", cs.CircleId)
 		for _, be := range cs.Backends {
 			cs.wg.Add(1)
@@ -484,7 +513,7 @@ func (tx *Transfer) runResync(cs *CircleState, be *backend.Backend, db string, m
 	tick := args[0].(int64)
 	key := backend.GetKey(db, meas)
 	dsts := make([]*backend.Backend, 0)
-	for _, tcs := range tx.CircleStates {
+	for _, tcs := range tx.CircleStates() {
 		if tcs.CircleId != cs.CircleId {
 			dst := tcs.GetBackend(key)
 			dsts = append(dsts, dst)
@@ -507,7 +536,7 @@ func (tx *Transfer) Cleanup(circleId int) { // nolint:golint
 	}
 	defer tx.pool.Release()
 	tlog.Printf("cleanup start: circle %d", circleId)
-	cs := tx.CircleStates[circleId]
+	cs := tx.CircleState(circleId)
 	tx.resetCircleStates()
 	tx.broadcastTransferring(cs, true)
 	defer tx.broadcastTransferring(cs, false)
