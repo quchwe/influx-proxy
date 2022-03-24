@@ -14,7 +14,7 @@ import (
 type Circle struct {
 	CircleId     int // nolint:golint
 	Name         string
-	Backends     []*Backend
+	backends     []*Backend
 	router       *consistent.Consistent
 	routerCache  sync.Map
 	mapToBackend map[string]*Backend
@@ -24,14 +24,14 @@ func NewCircle(cfg *CircleConfig, pxcfg *ProxyConfig, circleId int) (ic *Circle)
 	ic = &Circle{
 		CircleId:     circleId,
 		Name:         cfg.Name,
-		Backends:     make([]*Backend, len(cfg.Backends)),
+		backends:     make([]*Backend, len(cfg.Backends)),
 		router:       consistent.New(),
 		mapToBackend: make(map[string]*Backend),
 	}
 	ic.router.NumberOfReplicas = 256
 	for idx, bkcfg := range cfg.Backends {
-		ic.Backends[idx] = NewBackend(bkcfg, pxcfg)
-		ic.addRouter(ic.Backends[idx], idx, pxcfg.HashKey)
+		ic.backends[idx] = NewBackend(bkcfg, pxcfg)
+		ic.addRouter(ic.backends[idx], idx, pxcfg.HashKey)
 	}
 	return
 }
@@ -59,6 +59,17 @@ func (ic *Circle) addRouter(be *Backend, idx int, hashKey string) {
 	}
 }
 
+func (ic *Circle) Backends() []*Backend {
+	return ic.backends
+}
+
+func (ic *Circle) Backend(idx int) *Backend {
+	if idx < 0 || idx >= len(ic.backends) {
+		return nil
+	}
+	return ic.backends[idx]
+}
+
 func (ic *Circle) GetBackend(key string) *Backend {
 	if be, ok := ic.routerCache.Load(key); ok {
 		return be.(*Backend)
@@ -71,8 +82,8 @@ func (ic *Circle) GetBackend(key string) *Backend {
 
 func (ic *Circle) GetHealth(stats bool) interface{} {
 	var wg sync.WaitGroup
-	backends := make([]interface{}, len(ic.Backends))
-	for i, be := range ic.Backends {
+	backends := make([]interface{}, len(ic.backends))
+	for i, be := range ic.backends {
 		wg.Add(1)
 		go func(i int, be *Backend) {
 			defer wg.Done()
@@ -94,7 +105,7 @@ func (ic *Circle) GetHealth(stats bool) interface{} {
 }
 
 func (ic *Circle) IsActive() bool {
-	for _, be := range ic.Backends {
+	for _, be := range ic.backends {
 		if !be.IsActive() {
 			return false
 		}
@@ -103,7 +114,7 @@ func (ic *Circle) IsActive() bool {
 }
 
 func (ic *Circle) IsWriteOnly() bool {
-	for _, be := range ic.Backends {
+	for _, be := range ic.backends {
 		if be.IsWriteOnly() {
 			return true
 		}
@@ -112,13 +123,13 @@ func (ic *Circle) IsWriteOnly() bool {
 }
 
 func (ic *Circle) SetTransferIn(b bool) {
-	for _, be := range ic.Backends {
+	for _, be := range ic.backends {
 		be.SetTransferIn(b)
 	}
 }
 
 func (ic *Circle) Close() {
-	for _, be := range ic.Backends {
+	for _, be := range ic.backends {
 		be.Close()
 	}
 }

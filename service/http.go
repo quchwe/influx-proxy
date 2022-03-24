@@ -288,7 +288,7 @@ func (hs *HttpService) HandlerRebalance(w http.ResponseWriter, req *http.Request
 			hs.tx.CircleState(circleId).Stats[bkcfg.Url] = &transfer.Stats{}
 		}
 	}
-	backends = append(backends, hs.ip.Circle(circleId).Backends...)
+	backends = append(backends, hs.ip.Circle(circleId).Backends()...)
 
 	if hs.tx.CircleState(circleId).Transferring {
 		hs.WriteText(w, 400, fmt.Sprintf("circle %d is transferring", circleId))

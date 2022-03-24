@@ -128,7 +128,7 @@ func (tx *Transfer) getDatabases() []string {
 	dbs := make([]string, 0)
 	dbm := make(map[string]bool)
 	for _, cs := range tx.CircleStates() {
-		for _, be := range cs.Backends {
+		for _, be := range cs.Backends() {
 			if be.IsActive() {
 				for _, db := range be.GetDatabases() {
 					if _, ok := dbm[db]; !ok {
@@ -149,7 +149,7 @@ func (tx *Transfer) createDatabases(dbs []string) ([]string, error) {
 	if len(dbs) > 0 {
 		backends := make([]*backend.Backend, 0)
 		for _, cs := range tx.CircleStates() {
-			backends = append(backends, cs.Backends...)
+			backends = append(backends, cs.Backends()...)
 		}
 		for _, db := range dbs {
 			q := fmt.Sprintf("create database \"%s\"", util.EscapeIdentifier(db))
@@ -454,11 +454,11 @@ func (tx *Transfer) Recovery(fromCircleId, toCircleId int, backendUrls []string,
 			backendUrlSet.Add(u)
 		}
 	} else {
-		for _, b := range tcs.Backends {
+		for _, b := range tcs.Backends() {
 			backendUrlSet.Add(b.Url)
 		}
 	}
-	for _, be := range fcs.Backends {
+	for _, be := range fcs.Backends() {
 		fcs.wg.Add(1)
 		go tx.runTransfer(fcs, be, dbs, tx.runRecovery, tcs, backendUrlSet)
 	}
@@ -498,7 +498,7 @@ func (tx *Transfer) Resync(dbs []string, tick int64) {
 
 	for _, cs := range tx.CircleStates() {
 		tlog.Printf("resync start: circle %d", cs.CircleId)
-		for _, be := range cs.Backends {
+		for _, be := range cs.Backends() {
 			cs.wg.Add(1)
 			go tx.runTransfer(cs, be, dbs, tx.runResync, tick)
 		}
@@ -541,7 +541,7 @@ func (tx *Transfer) Cleanup(circleId int) { // nolint:golint
 	tx.broadcastTransferring(cs, true)
 	defer tx.broadcastTransferring(cs, false)
 
-	for _, be := range cs.Backends {
+	for _, be := range cs.Backends() {
 		dbs := be.GetDatabases()
 		if len(dbs) > 0 {
 			cs.wg.Add(1)

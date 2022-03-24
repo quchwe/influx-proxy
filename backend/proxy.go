@@ -113,11 +113,11 @@ func (ip *Proxy) GetAllBackends() []*Backend {
 	circles := ip.Circles()
 	capacity := 0
 	for _, circle := range circles {
-		capacity += len(circle.Backends)
+		capacity += len(circle.Backends())
 	}
 	backends := make([]*Backend, 0, capacity)
 	for _, circle := range circles {
-		backends = append(backends, circle.Backends...)
+		backends = append(backends, circle.Backends()...)
 	}
 	return backends
 }
