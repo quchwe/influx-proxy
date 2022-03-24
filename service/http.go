@@ -25,6 +25,7 @@ import (
 	"github.com/chengshiwen/influx-proxy/util"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 var (
@@ -75,6 +76,7 @@ func (hs *HttpService) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/transfer/stats", hs.HandlerTransferStats)
 	mux.HandleFunc("/api/v1/prom/read", hs.HandlerPromRead)
 	mux.HandleFunc("/api/v1/prom/write", hs.HandlerPromWrite)
+	mux.HandleFunc("/metrics", promhttp.Handler().ServeHTTP)
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
 	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
 }

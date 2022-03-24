@@ -9,6 +9,7 @@ require (
 	github.com/json-iterator/go v1.1.12
 	github.com/mitchellh/gox v1.0.1 // indirect
 	github.com/panjf2000/ants/v2 v2.4.8
+	github.com/prometheus/client_golang v1.12.1
 	github.com/spf13/viper v1.10.1
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0
 	stathat.com/c/consistent v1.0.0
