@@ -67,15 +67,14 @@ type ProxyConfig struct {
 
 func NewFileConfig(cfgfile string) (cfg *ProxyConfig, err error) {
 	viper.SetConfigFile(cfgfile)
+	return ReadFileConfig()
+}
+
+func ReadFileConfig() (cfg *ProxyConfig, err error) {
 	err = viper.ReadInConfig()
 	if err != nil {
 		return
 	}
-	viper.WatchConfig()
-	return NewFileConfigWithViper()
-}
-
-func NewFileConfigWithViper() (cfg *ProxyConfig, err error) {
 	cfg = &ProxyConfig{}
 	err = viper.Unmarshal(cfg)
 	if err != nil {
@@ -165,8 +164,8 @@ func (cfg *ProxyConfig) String() string {
 	return string(b)
 }
 
-// KeepWith will ignore some config items.
-func (cfg *ProxyConfig) KeepWith(ofc *ProxyConfig) {
+// KeepInRuntime will keep some config items that cannot be modified in runtime.
+func (cfg *ProxyConfig) KeepInRuntime(ofc *ProxyConfig) {
 	cfg.ListenAddr = ofc.ListenAddr
 	cfg.IdleTimeout = ofc.IdleTimeout
 	cfg.HTTPSEnabled = ofc.HTTPSEnabled

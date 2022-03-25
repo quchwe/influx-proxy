@@ -25,11 +25,9 @@ import (
 	"github.com/chengshiwen/influx-proxy/service/prometheus/remote"
 	"github.com/chengshiwen/influx-proxy/transfer"
 	"github.com/chengshiwen/influx-proxy/util"
-	"github.com/fsnotify/fsnotify"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/spf13/viper"
 )
 
 var (
@@ -58,18 +56,6 @@ func NewHttpService(cfg *backend.ProxyConfig) (hs *HttpService) { // nolint:goli
 		tx: transfer.NewTransfer(cfg, ip.Circles()),
 	}
 	hs.setConfig(cfg)
-	viper.OnConfigChange(func(e fsnotify.Event) {
-		if e.Op&fsnotify.Write != fsnotify.Write {
-			return
-		}
-		nfc, err := backend.NewFileConfigWithViper()
-		if err != nil {
-			log.Printf("watch config error: %s", err)
-			return
-		}
-		// log.Printf("watch config changed: %s", nfc)
-		hs.ReloadConfig(nfc)
-	})
 	return
 }
 
@@ -82,28 +68,11 @@ func (hs *HttpService) setConfig(cfg *backend.ProxyConfig) {
 	hs.queryTracing.Store(cfg.QueryTracing)
 }
 
-func (hs *HttpService) ReloadConfig(nfc *backend.ProxyConfig) {
-	nfc.KeepWith(hs.cfg)
-	if reflect.DeepEqual(nfc, hs.cfg) {
-		log.Printf("watch config changed, but ignored, and this change should be rolled back: listen_addr, idle_timeout, https_enabled, https_cert, https_key")
-		return
-	}
-	log.Printf("watch config reloading")
-	err := hs.ip.ReloadConfig(nfc)
-	if err != nil {
-		log.Printf("watch config reload error: %s", err)
-		return
-	}
-	hs.tx.ReloadConfig(nfc, hs.ip.Circles())
-	hs.setConfig(nfc)
-	nfc.PrintSummary()
-	log.Printf("watch config reloaded")
-}
-
 func (hs *HttpService) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/ping", hs.HandlerPing)
 	mux.HandleFunc("/query", hs.HandlerQuery)
 	mux.HandleFunc("/write", hs.HandlerWrite)
+	mux.HandleFunc("/reload", hs.HandlerReload)
 	mux.HandleFunc("/health", hs.HandlerHealth)
 	mux.HandleFunc("/replica", hs.HandlerReplica)
 	mux.HandleFunc("/encrypt", hs.HandlerEncrypt)
@@ -194,6 +163,47 @@ func (hs *HttpService) HandlerWrite(w http.ResponseWriter, req *http.Request) {
 	if hs.isWriteTracing() {
 		log.Printf("write: %s %s %s %s, client: %s", db, rp, precision, p, req.RemoteAddr)
 	}
+}
+
+func (hs *HttpService) HandlerReload(w http.ResponseWriter, req *http.Request) {
+	defer req.Body.Close()
+	if !hs.checkMethodAndAuth(w, req, "GET", "POST") {
+		return
+	}
+
+	nfc, err := backend.ReadFileConfig()
+	if err != nil {
+		log.Printf("read config error: %s", err)
+		hs.WriteError(w, req, 500, err.Error())
+		return
+	}
+
+	if reflect.DeepEqual(nfc, hs.cfg) {
+		log.Printf("config not changed")
+		hs.WriteError(w, req, 500, "config not changed")
+		return
+	}
+	// Items that cannot be modified in runtime: listen_addr, idle_timeout, https_enabled, https_cert, https_key
+	nfc.KeepInRuntime(hs.cfg)
+	if reflect.DeepEqual(nfc, hs.cfg) {
+		log.Printf("config changed, but ignored, and this change should be rolled back: listen_addr, idle_timeout, https_enabled, https_cert, https_key")
+		hs.WriteError(w, req, 500, "config changed, but ignored: listen_addr, idle_timeout, https_enabled, https_cert, https_key")
+		return
+	}
+
+	log.Printf("config reloading")
+	err = hs.ip.ReloadConfig(nfc)
+	if err != nil {
+		log.Printf("config reload error: %s", err)
+		hs.WriteError(w, req, 500, err.Error())
+		return
+	}
+	hs.tx.ReloadConfig(nfc, hs.ip.Circles())
+	hs.setConfig(nfc)
+	nfc.PrintSummary()
+	log.Printf("config reloaded")
+
+	hs.WriteText(w, 200, nfc.String())
 }
 
 func (hs *HttpService) HandlerHealth(w http.ResponseWriter, req *http.Request) {
