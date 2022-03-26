@@ -31,32 +31,15 @@ func NewCircle(cfg *CircleConfig, pxcfg *ProxyConfig, circleId int) (ic *Circle)
 	ic.router.NumberOfReplicas = 256
 	for idx, bkcfg := range cfg.Backends {
 		ic.Backends[idx] = NewBackend(bkcfg, pxcfg)
-		ic.addRouter(ic.Backends[idx], idx, pxcfg.HashKey)
+		ic.addRouter(ic.Backends[idx], idx)
 	}
 	return
 }
 
-func (ic *Circle) addRouter(be *Backend, idx int, hashKey string) {
-	if hashKey == "name" {
-		ic.router.Add(be.Name)
-		ic.mapToBackend[be.Name] = be
-	} else if hashKey == "url" {
-		// compatible with version <= 2.3
-		ic.router.Add(be.Url)
-		ic.mapToBackend[be.Url] = be
-	} else if hashKey == "exi" {
-		// exi: extended index, recommended, started with 2.5+
-		// no hash collision will occur before idx <= 100000, which has been tested
-		str := "|" + strconv.Itoa(idx)
-		ic.router.Add(str)
-		ic.mapToBackend[str] = be
-	} else {
-		// idx: default index, compatible with version 2.4, recommended when the number of backends <= 10
-		// each additional backend causes 10% hash collision from 11th backend
-		str := strconv.Itoa(idx)
-		ic.router.Add(str)
-		ic.mapToBackend[str] = be
-	}
+func (ic *Circle) addRouter(be *Backend, idx int) {
+	str := "|" + strconv.Itoa(idx)
+	ic.router.Add(str)
+	ic.mapToBackend[str] = be
 }
 
 func (ic *Circle) GetBackend(key string) *Backend {

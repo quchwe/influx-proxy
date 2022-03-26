@@ -1,6 +1,6 @@
 # InfluxDB Proxy
 
-This project adds a basic high availability and consistent hash layer to InfluxDB.
+This project adds a basic high availability and consistent hash layer to InfluxDB v2.
 
 NOTE: influx-proxy must be built with Go 1.14+ with Go module support, don't implement udp.
 
@@ -18,31 +18,25 @@ Forked from the above InfluxDB Proxy, after many improvements and optimizations,
 
 Since the InfluxDB Proxy v1 is limited by the only `ONE` database and the `KEYMAPS` configuration, we refactored [InfluxDB Proxy v2](https://github.com/chengshiwen/influx-proxy) with high availability and consistent hash, which supports multiple databases and tools to rebalance, recovery, resync and cleanup.
 
+[InfluxDB Proxy v3](https://github.com/chengshiwen/influx-proxy/tree/influxdb-v2) is aimed at [InfluxDB v2](https://docs.influxdata.com/influxdb/v2.1/).
+
 ## Features
 
 * Support query and write.
-* Support some cluster influxql.
-* Filter some dangerous influxql.
 * Transparent for client, like cluster for client.
 * Cache data to file when write failed, then rewrite.
-* Support multiple databases to create and store.
-* Support database sharding with consistent hash.
-* Support tools to rebalance, recovery, resync and cleanup.
+* Support data sharding with consistent hash.
 * Load config file and no longer depend on python and redis.
-* Support both rp and precision parameter when writing data.
-* Support influxdb-java, influxdb shell and grafana.
-* Support prometheus remote read and write.
+* Support influxdb-java, and influxdb shell.
 * Support authentication and https.
-* Support authentication encryption.
 * Support health status query.
-* Support database whitelist.
 * Support version display.
 * Support gzip.
 
 ## Requirements
 
 * Golang >= 1.14 with Go module support
-* InfluxDB 1.2 - 1.8 (For 2.x, please visit branch [influxdb-v2](https://github.com/chengshiwen/influx-proxy/tree/influxdb-v2))
+* InfluxDB >= 2.0 (For 1.x, please visit branch [master](https://github.com/chengshiwen/influx-proxy/tree/master))
 
 ## Usage
 
@@ -82,7 +76,7 @@ $ make linux
 ## Description
 
 The architecture is fairly simple, one InfluxDB Proxy instance and two consistent hash circles with two InfluxDB instances respectively.
-The Proxy should point HTTP requests with db and measurement to the two circles and the four InfluxDB servers.
+The Proxy should point HTTP requests with organization, bucket and measurement to the two circles and the four InfluxDB servers.
 
 The setup should look like this:
 
@@ -101,7 +95,8 @@ The setup should look like this:
                  │
                  ▼
         ┌──────────────────┐
-        │  db,measurement  │
+        │    org,bucket    │
+        │   & measurement  │
         │ consistent hash  │
         └──────────────────┘
           |              |
@@ -128,27 +123,19 @@ The configuration settings are as follows:
   * `backends`: backend list belong to the circle, `required`
     * `name`: backend name, `required`
     * `url`: influxdb addr or other http backend which supports influxdb line protocol, `required`
-    * `username`: influxdb username, with encryption if auth_encrypt is enabled, default is `empty` which means no auth
-    * `password`: influxdb password, with encryption if auth_encrypt is enabled, default is `empty` which means no auth
-    * `auth_encrypt`: whether to encrypt auth (username/password), default is `false`
+    * `token`: influxdb token, `required`
     * `write_only`: whether to write only on the influxdb, default is `false`
 * `listen_addr`: proxy listen addr, default is `:7076`
-* `db_list`: database list permitted to access, default is `[]`
 * `data_dir`: data dir to save .dat .rec, default is `data`
-* `tlog_dir`: transfer log dir to rebalance, recovery, resync or cleanup, default is `log`
-* `hash_key`: backend key for consistent hash, including "idx", "exi", "name" or "url", default is `idx`, once changed rebalance operation is necessary
 * `flush_size`: default is `10000`, wait 10000 points write
 * `flush_time`: default is `1`, wait 1 second write whether point count has bigger than flush_size config
 * `check_interval`: default is `1`, check backend active every 1 second
 * `rewrite_interval`: default is `10`, rewrite every 10 seconds
 * `conn_pool_size`: default is `20`, create a connection pool which size is 20
 * `write_timeout`: default is `10`, write timeout until 10 seconds
-* `idle_timeout`: default is `10`, keep-alives wait time until 10 seconds
-* `username`: proxy username, with encryption if auth_encrypt is enabled, default is `empty` which means no auth
-* `password`: proxy password, with encryption if auth_encrypt is enabled, default is `empty` which means no auth
-* `auth_encrypt`: whether to encrypt auth (username/password), default is `false`
 * `write_tracing`: enable logging for the write, default is `false`
 * `query_tracing`: enable logging for the query, default is `false`
+* `token`: proxy token, default is `empty` which means no auth
 * `https_enabled`: enable https, default is `false`
 * `https_cert`: the ssl certificate to use when https is enabled, default is `empty`
 * `https_key`: use a separate private key location, default is `empty`

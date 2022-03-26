@@ -44,19 +44,17 @@ type QueryResult struct {
 }
 
 type HttpBackend struct { // nolint:golint
-	client      *http.Client
-	transport   *http.Transport
-	Name        string
-	Url         string // nolint:golint
-	username    string
-	password    string
-	authEncrypt bool
-	interval    int
-	running     atomic.Value
-	active      atomic.Value
-	rewriting   atomic.Value
-	transferIn  atomic.Value
-	writeOnly   bool
+	client     *http.Client
+	transport  *http.Transport
+	Name       string
+	Url        string // nolint:golint
+	token      string
+	interval   int
+	running    atomic.Value
+	active     atomic.Value
+	rewriting  atomic.Value
+	transferIn atomic.Value
+	writeOnly  bool
 }
 
 func NewHttpBackend(cfg *BackendConfig, pxcfg *ProxyConfig) (hb *HttpBackend) { // nolint:golint
@@ -69,13 +67,11 @@ func NewHttpBackend(cfg *BackendConfig, pxcfg *ProxyConfig) (hb *HttpBackend) { 
 
 func NewSimpleHttpBackend(cfg *BackendConfig) (hb *HttpBackend) { // nolint:golint
 	hb = &HttpBackend{
-		transport:   NewTransport(strings.HasPrefix(cfg.Url, "https")),
-		Name:        cfg.Name,
-		Url:         cfg.Url,
-		username:    cfg.Username,
-		password:    cfg.Password,
-		authEncrypt: cfg.AuthEncrypt,
-		writeOnly:   cfg.WriteOnly,
+		transport: NewTransport(strings.HasPrefix(cfg.Url, "https")),
+		Name:      cfg.Name,
+		Url:       cfg.Url,
+		token:     cfg.Token,
+		writeOnly: cfg.WriteOnly,
 	}
 	hb.running.Store(true)
 	hb.active.Store(true)
@@ -144,16 +140,8 @@ func CopyHeader(dst, src http.Header) {
 	}
 }
 
-func SetBasicAuth(req *http.Request, username string, password string, authEncrypt bool) {
-	if authEncrypt {
-		req.SetBasicAuth(util.AesDecrypt(username), util.AesDecrypt(password))
-	} else {
-		req.SetBasicAuth(username, password)
-	}
-}
-
-func (hb *HttpBackend) SetBasicAuth(req *http.Request) {
-	SetBasicAuth(req, hb.username, hb.password, hb.authEncrypt)
+func (hb *HttpBackend) SetAuthorization(req *http.Request) {
+	req.Header.Set("Authorization", fmt.Sprintf("Token %s", hb.token))
 }
 
 func (hb *HttpBackend) CheckActive() {
@@ -216,10 +204,8 @@ func (hb *HttpBackend) WriteStream(db, rp string, stream io.Reader, compressed b
 	q := url.Values{}
 	q.Set("db", db)
 	q.Set("rp", rp)
-	req, err := http.NewRequest("POST", hb.Url+"/write?"+q.Encode(), stream)
-	if hb.username != "" || hb.password != "" {
-		hb.SetBasicAuth(req)
-	}
+	req, err := http.NewRequest("POST", hb.Url+"/api/v2/write?"+q.Encode(), stream)
+	hb.SetAuthorization(req)
 	if compressed {
 		req.Header.Add("Content-Encoding", "gzip")
 	}
@@ -262,42 +248,6 @@ func (hb *HttpBackend) WriteStream(db, rp string, stream io.Reader, compressed b
 	return
 }
 
-func (hb *HttpBackend) ReadProm(req *http.Request, w http.ResponseWriter) (err error) {
-	if len(req.Form) == 0 {
-		req.Form = url.Values{}
-	}
-	req.Form.Del("u")
-	req.Form.Del("p")
-	if hb.username != "" || hb.password != "" {
-		hb.SetBasicAuth(req)
-	}
-
-	req.URL, err = url.Parse(hb.Url + "/api/v1/prom/read?" + req.Form.Encode())
-	if err != nil {
-		log.Print("internal url parse error: ", err)
-		return
-	}
-
-	resp, err := hb.transport.RoundTrip(req)
-	if err != nil {
-		log.Printf("prometheus read error: %s", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	CopyHeader(w.Header(), resp.Header)
-
-	p, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Printf("prometheus read body error: %s", err)
-		return
-	}
-
-	w.WriteHeader(resp.StatusCode)
-	_, err = w.Write(p)
-	return
-}
-
 func (hb *HttpBackend) Query(req *http.Request, w http.ResponseWriter, decompress bool) (qr *QueryResult) {
 	if req.Header.Get(HeaderQueryOrigin) == QueryParallel {
 		defer req.Body.Close()
@@ -309,11 +259,9 @@ func (hb *HttpBackend) Query(req *http.Request, w http.ResponseWriter, decompres
 	req.Form.Del("u")
 	req.Form.Del("p")
 	req.ContentLength = 0
-	if hb.username != "" || hb.password != "" {
-		hb.SetBasicAuth(req)
-	}
+	hb.SetAuthorization(req)
 
-	req.URL, qr.Err = url.Parse(hb.Url + "/query?" + req.Form.Encode())
+	req.URL, qr.Err = url.Parse(hb.Url + "/api/v2/query?" + req.Form.Encode())
 	if qr.Err != nil {
 		log.Print("internal url parse error: ", qr.Err)
 		return

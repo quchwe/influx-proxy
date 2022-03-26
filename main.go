@@ -58,7 +58,7 @@ func main() {
 	server := &http.Server{
 		Addr:        cfg.ListenAddr,
 		Handler:     mux,
-		IdleTimeout: time.Duration(cfg.IdleTimeout) * time.Second,
+		IdleTimeout: 10 * time.Second,
 	}
 	if cfg.HTTPSEnabled {
 		log.Printf("https service start, listen on %s", server.Addr)

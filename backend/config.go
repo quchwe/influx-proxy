@@ -24,16 +24,15 @@ var (
 	ErrEmptyBackends         = errors.New("backends cannot be empty")
 	ErrEmptyBackendName      = errors.New("backend name cannot be empty")
 	ErrDuplicatedBackendName = errors.New("backend name duplicated")
-	ErrInvalidHashKey        = errors.New("invalid hash_key, require idx, exi, name or url")
+	ErrEmptyBackendUrl       = errors.New("backend url cannot be empty") // nolint:golint
+	ErrEmptyBackendToken     = errors.New("backend token cannot be empty")
 )
 
 type BackendConfig struct { // nolint:golint
-	Name        string `mapstructure:"name"`
-	Url         string `mapstructure:"url"` // nolint:golint
-	Username    string `mapstructure:"username"`
-	Password    string `mapstructure:"password"`
-	AuthEncrypt bool   `mapstructure:"auth_encrypt"`
-	WriteOnly   bool   `mapstructure:"write_only"`
+	Name      string `mapstructure:"name"`
+	Url       string `mapstructure:"url"` // nolint:golint
+	Token     string `mapstructure:"token"`
+	WriteOnly bool   `mapstructure:"write_only"`
 }
 
 type CircleConfig struct {
@@ -44,22 +43,16 @@ type CircleConfig struct {
 type ProxyConfig struct {
 	Circles         []*CircleConfig `mapstructure:"circles"`
 	ListenAddr      string          `mapstructure:"listen_addr"`
-	DBList          []string        `mapstructure:"db_list"`
 	DataDir         string          `mapstructure:"data_dir"`
-	TLogDir         string          `mapstructure:"tlog_dir"`
-	HashKey         string          `mapstructure:"hash_key"`
 	FlushSize       int             `mapstructure:"flush_size"`
 	FlushTime       int             `mapstructure:"flush_time"`
 	CheckInterval   int             `mapstructure:"check_interval"`
 	RewriteInterval int             `mapstructure:"rewrite_interval"`
 	ConnPoolSize    int             `mapstructure:"conn_pool_size"`
 	WriteTimeout    int             `mapstructure:"write_timeout"`
-	IdleTimeout     int             `mapstructure:"idle_timeout"`
-	Username        string          `mapstructure:"username"`
-	Password        string          `mapstructure:"password"`
-	AuthEncrypt     bool            `mapstructure:"auth_encrypt"`
 	WriteTracing    bool            `mapstructure:"write_tracing"`
 	QueryTracing    bool            `mapstructure:"query_tracing"`
+	Token           string          `mapstructure:"token"`
 	HTTPSEnabled    bool            `mapstructure:"https_enabled"`
 	HTTPSCert       string          `mapstructure:"https_cert"`
 	HTTPSKey        string          `mapstructure:"https_key"`
@@ -88,12 +81,6 @@ func (cfg *ProxyConfig) setDefault() {
 	if cfg.DataDir == "" {
 		cfg.DataDir = "data"
 	}
-	if cfg.TLogDir == "" {
-		cfg.TLogDir = "log"
-	}
-	if cfg.HashKey == "" {
-		cfg.HashKey = "idx"
-	}
 	if cfg.FlushSize <= 0 {
 		cfg.FlushSize = 10000
 	}
@@ -111,9 +98,6 @@ func (cfg *ProxyConfig) setDefault() {
 	}
 	if cfg.WriteTimeout <= 0 {
 		cfg.WriteTimeout = 10
-	}
-	if cfg.IdleTimeout <= 0 {
-		cfg.IdleTimeout = 10
 	}
 }
 
@@ -134,10 +118,13 @@ func (cfg *ProxyConfig) checkConfig() (err error) {
 				return ErrDuplicatedBackendName
 			}
 			set.Add(backend.Name)
+			if backend.Url == "" {
+				return ErrEmptyBackendUrl
+			}
+			if backend.Token == "" {
+				return ErrEmptyBackendToken
+			}
 		}
-	}
-	if cfg.HashKey != "idx" && cfg.HashKey != "exi" && cfg.HashKey != "name" && cfg.HashKey != "url" {
-		return ErrInvalidHashKey
 	}
 	return
 }
@@ -147,11 +134,7 @@ func (cfg *ProxyConfig) PrintSummary() {
 	for id, circle := range cfg.Circles {
 		log.Printf("circle %d: %d backends loaded", id, len(circle.Backends))
 	}
-	log.Printf("hash key: %s", cfg.HashKey)
-	if len(cfg.DBList) > 0 {
-		log.Printf("db list: %v", cfg.DBList)
-	}
-	log.Printf("auth: %t, encrypt: %t", cfg.Username != "" || cfg.Password != "", cfg.AuthEncrypt)
+	log.Printf("auth: %t", cfg.Token != "")
 }
 
 func (cfg *ProxyConfig) String() string {

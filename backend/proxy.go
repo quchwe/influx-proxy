@@ -6,7 +6,6 @@ package backend
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"log"
 	"math/rand"
@@ -21,7 +20,6 @@ import (
 
 type Proxy struct {
 	Circles []*Circle
-	dbSet   util.Set
 }
 
 func NewProxy(cfg *ProxyConfig) (ip *Proxy) {
@@ -32,13 +30,9 @@ func NewProxy(cfg *ProxyConfig) (ip *Proxy) {
 	}
 	ip = &Proxy{
 		Circles: make([]*Circle, len(cfg.Circles)),
-		dbSet:   util.NewSet(),
 	}
 	for idx, circfg := range cfg.Circles {
 		ip.Circles[idx] = NewCircle(circfg, cfg, idx)
-	}
-	for _, db := range cfg.DBList {
-		ip.dbSet.Add(db)
 	}
 	rand.Seed(time.Now().UnixNano())
 	return
@@ -87,10 +81,6 @@ func (ip *Proxy) GetHealth(stats bool) []interface{} {
 	return health
 }
 
-func (ip *Proxy) IsForbiddenDB(db string) bool {
-	return db == "_internal" || (len(ip.dbSet) > 0 && !ip.dbSet[db])
-}
-
 func (ip *Proxy) Query(w http.ResponseWriter, req *http.Request) (body []byte, err error) {
 	q := strings.TrimSpace(req.FormValue("q"))
 	if q == "" {
@@ -112,9 +102,6 @@ func (ip *Proxy) Query(w http.ResponseWriter, req *http.Request) (body []byte, e
 	if !showDb {
 		if db == "" {
 			return nil, ErrDatabaseNotFound
-		}
-		if ip.IsForbiddenDB(db) {
-			return nil, fmt.Errorf("database forbidden: %s", db)
 		}
 	}
 
@@ -204,10 +191,6 @@ func (ip *Proxy) WritePoints(points []models.Point, db, rp string) error {
 		}
 	}
 	return err
-}
-
-func (ip *Proxy) ReadProm(w http.ResponseWriter, req *http.Request, db, metric string) (err error) {
-	return ReadPromQL(w, req, ip, db, metric)
 }
 
 func (ip *Proxy) Close() {
