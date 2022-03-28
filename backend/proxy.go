@@ -89,7 +89,7 @@ func (ip *Proxy) Query(w http.ResponseWriter, req *http.Request, org, query stri
 	}
 	bucket, meas, err := ScanQuery(query)
 	if err != nil {
-		return ErrIllegalFluxQuery
+		return
 	}
 	if bucket != "" && meas != "" {
 		return QueryWithBucketMeasurement(w, req, ip, org, bucket, meas)

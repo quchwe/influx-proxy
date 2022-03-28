@@ -100,12 +100,12 @@ func (hs *HttpService) HandlerQuery(w http.ResponseWriter, req *http.Request) {
 	req.Body = ioutil.NopCloser(bytes.NewBuffer(rbody))
 	err = hs.ip.Query(w, req, org, query)
 	if err != nil {
-		log.Printf("query error: %s, query: %s %s %s, client: %s", err, req.Method, org, query, req.RemoteAddr)
+		log.Printf("query error: %s, org: %s, query: %s, client: %s", err, org, query, req.RemoteAddr)
 		hs.WriteError(w, req, 400, err.Error())
 		return
 	}
 	if hs.queryTracing {
-		log.Printf("query: %s %s %s, client: %s", req.Method, org, query, req.RemoteAddr)
+		log.Printf("org: %s, query: %s, client: %s", org, query, req.RemoteAddr)
 	}
 }
 

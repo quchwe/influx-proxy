@@ -12,10 +12,7 @@ import (
 
 var (
 	ErrEmptyQuery          = errors.New("empty query")
-	ErrGetBucket           = errors.New("can't get bucket")
-	ErrGetMeasurement      = errors.New("can't get measurement")
 	ErrBackendsUnavailable = errors.New("backends unavailable")
-	ErrGetBackends         = errors.New("can't get backends")
 )
 
 func QueryWithBucketMeasurement(w http.ResponseWriter, req *http.Request, ip *Proxy, org, bucket, meas string) (err error) {
