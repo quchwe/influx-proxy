@@ -19,8 +19,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
-
-	"github.com/chengshiwen/influx-proxy/util"
 )
 
 var (
@@ -28,6 +26,7 @@ var (
 	ErrUnauthorized = errors.New("unauthorized")
 	ErrNotFound     = errors.New("not found")
 	ErrInternal     = errors.New("internal error")
+	ErrUnavailable  = errors.New("unavailable error")
 	ErrUnknown      = errors.New("unknown error")
 )
 
@@ -97,20 +96,6 @@ func NewTransport(tlsSkip bool) *http.Transport {
 		ExpectContinueTimeout: time.Second * 1,
 		TLSClientConfig:       &tls.Config{InsecureSkipVerify: tlsSkip},
 	}
-}
-
-func NewQueryRequest(method, db, q, epoch string) *http.Request {
-	header := http.Header{}
-	header.Set("Accept-Encoding", "gzip")
-	form := url.Values{}
-	form.Set("q", q)
-	if db != "" {
-		form.Set("db", db)
-	}
-	if epoch != "" {
-		form.Set("epoch", epoch)
-	}
-	return &http.Request{Method: method, Form: form, Header: header}
 }
 
 func CloneQueryRequest(r *http.Request) *http.Request {
@@ -185,25 +170,25 @@ func (hb *HttpBackend) Ping() bool {
 	return true
 }
 
-func (hb *HttpBackend) Write(db, rp string, p []byte) (err error) {
+func (hb *HttpBackend) Write(org, bucket string, p []byte) (err error) {
 	var buf bytes.Buffer
 	err = Compress(&buf, p)
 	if err != nil {
 		log.Print("compress error: ", err)
 		return
 	}
-	return hb.WriteStream(db, rp, &buf, true)
+	return hb.WriteStream(org, bucket, &buf, true)
 }
 
-func (hb *HttpBackend) WriteCompressed(db, rp string, p []byte) (err error) {
+func (hb *HttpBackend) WriteCompressed(org, bucket string, p []byte) (err error) {
 	buf := bytes.NewBuffer(p)
-	return hb.WriteStream(db, rp, buf, true)
+	return hb.WriteStream(org, bucket, buf, true)
 }
 
-func (hb *HttpBackend) WriteStream(db, rp string, stream io.Reader, compressed bool) (err error) {
+func (hb *HttpBackend) WriteStream(org, bucket string, stream io.Reader, compressed bool) (err error) {
 	q := url.Values{}
-	q.Set("db", db)
-	q.Set("rp", rp)
+	q.Set("org", org)
+	q.Set("bucket", bucket)
 	req, err := http.NewRequest("POST", hb.Url+"/api/v2/write?"+q.Encode(), stream)
 	hb.SetAuthorization(req)
 	if compressed {
@@ -239,131 +224,42 @@ func (hb *HttpBackend) WriteStream(db, rp string, stream io.Reader, compressed b
 		err = ErrNotFound
 	case 500:
 		err = ErrInternal
+	case 503:
+		err = ErrUnavailable
 	default: // mostly tcp connection timeout, or request entity too large
 		err = ErrUnknown
 	}
-	if bytes.Contains(respbuf, []byte("retention policy not found")) {
-		err = ErrBadRequest
-	}
 	return
 }
 
-func (hb *HttpBackend) Query(req *http.Request, w http.ResponseWriter, decompress bool) (qr *QueryResult) {
-	if req.Header.Get(HeaderQueryOrigin) == QueryParallel {
-		defer req.Body.Close()
-	}
-	qr = &QueryResult{}
-	if len(req.Form) == 0 {
-		req.Form = url.Values{}
-	}
-	req.Form.Del("u")
-	req.Form.Del("p")
-	req.ContentLength = 0
+func (hb *HttpBackend) Query(req *http.Request, w http.ResponseWriter) (err error) {
+	q := url.Values{}
+	q.Set("org", req.URL.Query().Get("org"))
 	hb.SetAuthorization(req)
 
-	req.URL, qr.Err = url.Parse(hb.Url + "/api/v2/query?" + req.Form.Encode())
-	if qr.Err != nil {
-		log.Print("internal url parse error: ", qr.Err)
+	req.URL, err = url.Parse(hb.Url + "/api/v2/query?" + q.Encode())
+	if err != nil {
+		log.Print("internal url parse error: ", err)
 		return
 	}
 
-	q := strings.TrimSpace(req.FormValue("q"))
 	resp, err := hb.transport.RoundTrip(req)
 	if err != nil {
-		if req.Header.Get(HeaderQueryOrigin) != QueryParallel || err.Error() != "context canceled" {
-			qr.Err = err
-			log.Printf("query error: %s, the query is %s", err, q)
-		}
+		log.Printf("query error: %s", err)
 		return
 	}
 	defer resp.Body.Close()
-	if w != nil {
-		CopyHeader(w.Header(), resp.Header)
-	}
 
-	respBody := resp.Body
-	if decompress && resp.Header.Get("Content-Encoding") == "gzip" {
-		b, err := gzip.NewReader(resp.Body)
-		if err != nil {
-			qr.Err = err
-			log.Printf("unable to decode gzip body: %s", err)
-			return
-		}
-		defer b.Close()
-		respBody = b
-	}
+	CopyHeader(w.Header(), resp.Header)
 
-	qr.Body, qr.Err = ioutil.ReadAll(respBody)
-	if qr.Err != nil {
-		log.Printf("read body error: %s, the query is %s", qr.Err, q)
+	p, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("read body error: %s", err)
 		return
 	}
-	if resp.StatusCode >= 400 {
-		rsp, _ := ResponseFromResponseBytes(qr.Body)
-		qr.Err = errors.New(rsp.Err)
-	}
-	qr.Header = resp.Header
-	qr.Status = resp.StatusCode
+	w.WriteHeader(resp.StatusCode)
+	_, err = w.Write(p)
 	return
-}
-
-func (hb *HttpBackend) QueryIQL(method, db, q, epoch string) ([]byte, error) {
-	qr := hb.Query(NewQueryRequest(method, db, q, epoch), nil, true)
-	return qr.Body, qr.Err
-}
-
-func (hb *HttpBackend) GetSeriesValues(db, q string) []string {
-	var values []string
-	qr := hb.Query(NewQueryRequest("GET", db, q, ""), nil, true)
-	if qr.Err != nil {
-		return values
-	}
-	series, _ := SeriesFromResponseBytes(qr.Body)
-	for _, s := range series {
-		for _, v := range s.Values {
-			if s.Name == "databases" && v[0].(string) == "_internal" {
-				continue
-			}
-			values = append(values, v[0].(string))
-		}
-	}
-	return values
-}
-
-// _internal has filtered
-func (hb *HttpBackend) GetDatabases() []string {
-	return hb.GetSeriesValues("", "show databases")
-}
-
-func (hb *HttpBackend) GetMeasurements(db string) []string {
-	return hb.GetSeriesValues(db, "show measurements")
-}
-
-func (hb *HttpBackend) GetTagKeys(db, meas string) []string {
-	return hb.GetSeriesValues(db, fmt.Sprintf("show tag keys from \"%s\"", util.EscapeIdentifier(meas)))
-}
-
-func (hb *HttpBackend) GetFieldKeys(db, meas string) map[string][]string {
-	fieldKeys := make(map[string][]string)
-	q := fmt.Sprintf("show field keys from \"%s\"", util.EscapeIdentifier(meas))
-	qr := hb.Query(NewQueryRequest("GET", db, q, ""), nil, true)
-	if qr.Err != nil {
-		return fieldKeys
-	}
-	series, _ := SeriesFromResponseBytes(qr.Body)
-	for _, s := range series {
-		for _, v := range s.Values {
-			fk := v[0].(string)
-			fieldKeys[fk] = append(fieldKeys[fk], v[1].(string))
-		}
-	}
-	return fieldKeys
-}
-
-func (hb *HttpBackend) DropMeasurement(db, meas string) ([]byte, error) {
-	q := fmt.Sprintf("drop measurement \"%s\"", util.EscapeIdentifier(meas))
-	qr := hb.Query(NewQueryRequest("POST", db, q, ""), nil, true)
-	return qr.Body, qr.Err
 }
 
 func (hb *HttpBackend) Close() {

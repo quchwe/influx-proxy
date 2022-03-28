@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/chengshiwen/influx-proxy/util"
-	"github.com/influxdata/influxdb1-client/models"
 )
 
 type Proxy struct {
@@ -38,10 +37,12 @@ func NewProxy(cfg *ProxyConfig) (ip *Proxy) {
 	return
 }
 
-func GetKey(db, meas string) string {
+func GetKey(org, bucket, meas string) string {
 	var b strings.Builder
-	b.Grow(len(db) + len(meas) + 1)
-	b.WriteString(db)
+	b.Grow(len(org) + len(bucket) + len(meas) + 1)
+	b.WriteString(org)
+	b.WriteString(",")
+	b.WriteString(bucket)
 	b.WriteString(",")
 	b.WriteString(meas)
 	return b.String()
@@ -67,58 +68,40 @@ func (ip *Proxy) GetAllBackends() []*Backend {
 	return backends
 }
 
-func (ip *Proxy) GetHealth(stats bool) []interface{} {
+func (ip *Proxy) GetHealth() []interface{} {
 	var wg sync.WaitGroup
 	health := make([]interface{}, len(ip.Circles))
 	for i, c := range ip.Circles {
 		wg.Add(1)
 		go func(i int, c *Circle) {
 			defer wg.Done()
-			health[i] = c.GetHealth(stats)
+			health[i] = c.GetHealth()
 		}(i, c)
 	}
 	wg.Wait()
 	return health
 }
 
-func (ip *Proxy) Query(w http.ResponseWriter, req *http.Request) (body []byte, err error) {
-	q := strings.TrimSpace(req.FormValue("q"))
-	if q == "" {
-		return nil, ErrEmptyQuery
+func (ip *Proxy) Query(w http.ResponseWriter, req *http.Request, org, query string) (err error) {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return ErrEmptyQuery
 	}
-
-	tokens, check, from := CheckQuery(q)
-	if !check {
-		return nil, ErrIllegalQL
+	bucket, meas, err := ScanQuery(query)
+	if err != nil {
+		return ErrIllegalFluxQuery
 	}
-
-	checkDb, showDb, alterDb, db := CheckDatabaseFromTokens(tokens)
-	if !checkDb {
-		db = req.FormValue("db")
-		if db == "" {
-			db, _ = GetDatabaseFromTokens(tokens)
-		}
+	if bucket != "" && meas != "" {
+		return QueryWithBucketMeasurement(w, req, ip, org, bucket, meas)
+	} else if bucket == "" {
+		return ErrGetBucket
+	} else if meas == "" {
+		return ErrGetMeasurement
 	}
-	if !showDb {
-		if db == "" {
-			return nil, ErrDatabaseNotFound
-		}
-	}
-
-	selectOrShow := CheckSelectOrShowFromTokens(tokens)
-	if selectOrShow && from {
-		return QueryFromQL(w, req, ip, tokens, db)
-	} else if selectOrShow && !from {
-		return QueryShowQL(w, req, ip, tokens)
-	} else if CheckDeleteOrDropMeasurementFromTokens(tokens) {
-		return QueryDeleteOrDropQL(w, req, ip, tokens, db)
-	} else if alterDb || CheckRetentionPolicyFromTokens(tokens) {
-		return QueryAlterQL(w, req, ip)
-	}
-	return nil, ErrIllegalQL
+	return ErrIllegalFluxQuery
 }
 
-func (ip *Proxy) Write(p []byte, db, rp, precision string) (err error) {
+func (ip *Proxy) Write(p []byte, org, bucket, precision string) (err error) {
 	buf := bytes.NewBuffer(p)
 	var line []byte
 	for {
@@ -137,12 +120,12 @@ func (ip *Proxy) Write(p []byte, db, rp, precision string) (err error) {
 		if len(line) == 0 {
 			continue
 		}
-		ip.WriteRow(line, db, rp, precision)
+		ip.WriteRow(line, org, bucket, precision)
 	}
 	return
 }
 
-func (ip *Proxy) WriteRow(line []byte, db, rp, precision string) {
+func (ip *Proxy) WriteRow(line []byte, org, bucket, precision string) {
 	nanoLine := AppendNano(line, precision)
 	meas, err := ScanKey(nanoLine)
 	if err != nil {
@@ -150,47 +133,24 @@ func (ip *Proxy) WriteRow(line []byte, db, rp, precision string) {
 		return
 	}
 	if !RapidCheck(nanoLine[len(meas):]) {
-		log.Printf("invalid format, drop data: %s %s %s %s", db, rp, precision, string(line))
+		log.Printf("invalid format, drop data: %s %s %s %s", org, bucket, precision, string(line))
 		return
 	}
 
-	key := GetKey(db, meas)
+	key := GetKey(org, bucket, meas)
 	backends := ip.GetBackends(key)
 	if len(backends) == 0 {
-		log.Printf("write data error: can't get backends, db: %s, meas: %s", db, meas)
+		log.Printf("write data error: can't get backends, org: %s, bucket: %s, meas: %s", org, bucket, meas)
 		return
 	}
 
-	point := &LinePoint{db, rp, nanoLine}
+	point := &LinePoint{org, bucket, nanoLine}
 	for _, be := range backends {
 		err = be.WritePoint(point)
 		if err != nil {
-			log.Printf("write data to buffer error: %s, %s, %s, %s, %s, %s", err, be.Url, db, rp, precision, string(line))
+			log.Printf("write data to buffer error: %s, %s, %s, %s, %s, %s", err, be.Url, org, bucket, precision, string(line))
 		}
 	}
-}
-
-func (ip *Proxy) WritePoints(points []models.Point, db, rp string) error {
-	var err error
-	for _, pt := range points {
-		meas := string(pt.Name())
-		key := GetKey(db, meas)
-		backends := ip.GetBackends(key)
-		if len(backends) == 0 {
-			log.Printf("write point error: can't get backends, db: %s, meas: %s", db, meas)
-			err = ErrEmptyBackends
-			continue
-		}
-
-		point := &LinePoint{db, rp, []byte(pt.String())}
-		for _, be := range backends {
-			err = be.WritePoint(point)
-			if err != nil {
-				log.Printf("write point to buffer error: %s, %s, %s, %s, %s", err, be.Url, db, rp, pt.String())
-			}
-		}
-	}
-	return err
 }
 
 func (ip *Proxy) Close() {

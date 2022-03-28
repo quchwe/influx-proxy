@@ -29,7 +29,7 @@ function set_token() {
         fi
         sleep 0.5
     done
-    docker exec -it influxdb-$1 influx setup -u influxdb -p influxdb -o myorg -b mybucket -f
+    docker exec -it influxdb-$1 influx setup -u influxdb -p influxdb -o myorg -b mybucket -f &> /dev/null
     INFLUX_TOKEN=$(docker exec -it influxdb-$1 bash -c "influx auth list -u influxdb | tail -n 1" | cut -f 3)
     if [[ -n $(sed --version 2> /dev/null | grep "GNU sed") ]]; then
         sed -i "$2s#\"token\": \".*\"#\"token\": \"${INFLUX_TOKEN}\"#" ${BASEDIR}/proxy.json

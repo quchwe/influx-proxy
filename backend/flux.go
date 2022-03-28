@@ -1,0 +1,16 @@
+// Copyright 2021 Shiwen Cheng. All rights reserved.
+// Use of this source code is governed by a MIT
+// license that can be found in the LICENSE file.
+
+package backend
+
+import "errors"
+
+var (
+	ErrIllegalFluxQuery = errors.New("illegal flux query")
+)
+
+func ScanQuery(query string) (bucket string, meas string, err error) {
+	// TODO: implement ScanQuery
+	return "", "", nil
+}

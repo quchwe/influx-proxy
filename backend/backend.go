@@ -107,15 +107,15 @@ func (ib *Backend) WritePoint(point *LinePoint) (err error) {
 }
 
 func (ib *Backend) WriteBuffer(point *LinePoint) (err error) {
-	db, rp, line := point.Db, point.Rp, point.Line
+	org, bucket, line := point.Org, point.Bucket, point.Line
 	// it's thread-safe since ib.buffers is only used (read-write) in ib.worker() goroutine
-	if _, ok := ib.buffers[db]; !ok {
-		ib.buffers[db] = make(map[string]*CacheBuffer)
+	if _, ok := ib.buffers[org]; !ok {
+		ib.buffers[org] = make(map[string]*CacheBuffer)
 	}
-	if _, ok := ib.buffers[db][rp]; !ok {
-		ib.buffers[db][rp] = &CacheBuffer{Buffer: &bytes.Buffer{}}
+	if _, ok := ib.buffers[org][bucket]; !ok {
+		ib.buffers[org][bucket] = &CacheBuffer{Buffer: &bytes.Buffer{}}
 	}
-	cb := ib.buffers[db][rp]
+	cb := ib.buffers[org][bucket]
 	cb.Counter++
 	if cb.Buffer == nil {
 		cb.Buffer = &bytes.Buffer{}
@@ -140,15 +140,15 @@ func (ib *Backend) WriteBuffer(point *LinePoint) (err error) {
 
 	switch {
 	case cb.Counter >= ib.flushSize:
-		ib.FlushBuffer(db, rp)
+		ib.FlushBuffer(org, bucket)
 	case ib.chTimer == nil:
 		ib.chTimer = time.After(time.Duration(ib.flushTime) * time.Second)
 	}
 	return
 }
 
-func (ib *Backend) FlushBuffer(db, rp string) {
-	cb := ib.buffers[db][rp]
+func (ib *Backend) FlushBuffer(org, bucket string) {
+	cb := ib.buffers[org][bucket]
 	if cb.Buffer == nil {
 		return
 	}
@@ -172,7 +172,7 @@ func (ib *Backend) FlushBuffer(db, rp string) {
 		p = buf.Bytes()
 
 		if ib.IsActive() {
-			err = ib.WriteCompressed(db, rp, p)
+			err = ib.WriteCompressed(org, bucket, p)
 			switch err {
 			case nil:
 				return
@@ -183,14 +183,14 @@ func (ib *Backend) FlushBuffer(db, rp string) {
 				log.Printf("bad backend, drop all data")
 				return
 			default:
-				log.Printf("write http error: %s %s %s, length: %d", ib.Url, db, rp, len(p))
+				log.Printf("write http error: %s %s %s, length: %d", ib.Url, org, bucket, len(p))
 			}
 		}
 
-		b := bytes.Join([][]byte{[]byte(url.QueryEscape(db)), []byte(url.QueryEscape(rp)), p}, []byte{' '})
+		b := bytes.Join([][]byte{[]byte(url.QueryEscape(org)), []byte(url.QueryEscape(bucket)), p}, []byte{' '})
 		err = ib.fb.Write(b)
 		if err != nil {
-			log.Printf("write db and data to file error with db: %s, rp: %s, length: %d error: %s", db, rp, len(p), err)
+			log.Printf("write data to file error with org: %s, bucket: %s, length: %d error: %s", org, bucket, len(p), err)
 			return
 		}
 	})
@@ -198,10 +198,10 @@ func (ib *Backend) FlushBuffer(db, rp string) {
 
 func (ib *Backend) Flush() {
 	ib.chTimer = nil
-	for db := range ib.buffers {
-		for rp := range ib.buffers[db] {
-			if ib.buffers[db][rp].Counter > 0 {
-				ib.FlushBuffer(db, rp)
+	for org := range ib.buffers {
+		for bucket := range ib.buffers[org] {
+			if ib.buffers[org][bucket].Counter > 0 {
+				ib.FlushBuffer(org, bucket)
 			}
 		}
 	}
@@ -247,17 +247,17 @@ func (ib *Backend) Rewrite() (err error) {
 		log.Print("rewrite read invalid data with length: ", len(p))
 		return
 	}
-	db, err := url.QueryUnescape(string(p[0]))
+	org, err := url.QueryUnescape(string(p[0]))
 	if err != nil {
-		log.Print("rewrite db unescape error: ", err)
+		log.Print("rewrite org unescape error: ", err)
 		return
 	}
-	rp, err := url.QueryUnescape(string(p[1]))
+	bucket, err := url.QueryUnescape(string(p[1]))
 	if err != nil {
-		log.Print("rewrite rp unescape error: ", err)
+		log.Print("rewrite bucket unescape error: ", err)
 		return
 	}
-	err = ib.WriteCompressed(db, rp, p[2])
+	err = ib.WriteCompressed(org, bucket, p[2])
 
 	switch err {
 	case nil:
@@ -268,7 +268,7 @@ func (ib *Backend) Rewrite() (err error) {
 		log.Printf("bad backend, drop all data")
 		err = nil
 	default:
-		log.Printf("rewrite http error: %s %s %s, length: %d", ib.Url, db, rp, len(p[1]))
+		log.Printf("rewrite http error: %s %s %s, length: %d", ib.Url, org, bucket, len(p[1]))
 
 		err = ib.fb.RollbackMeta()
 		if err != nil {
@@ -293,16 +293,14 @@ func (ib *Backend) Close() {
 	close(ib.chWrite)
 }
 
-func (ib *Backend) GetHealth(ic *Circle, withStats bool) interface{} {
+func (ib *Backend) GetHealth() interface{} {
 	health := struct {
-		Name      string      `json:"name"`
-		Url       string      `json:"url"` // nolint:golint
-		Active    bool        `json:"active"`
-		Backlog   bool        `json:"backlog"`
-		Rewriting bool        `json:"rewriting"`
-		WriteOnly bool        `json:"write_only"`
-		Healthy   bool        `json:"healthy,omitempty"`
-		Stats     interface{} `json:"stats,omitempty"`
+		Name      string `json:"name"`
+		Url       string `json:"url"` // nolint:golint
+		Active    bool   `json:"active"`
+		Backlog   bool   `json:"backlog"`
+		Rewriting bool   `json:"rewriting"`
+		WriteOnly bool   `json:"write_only"`
 	}{
 		Name:      ib.Name,
 		Url:       ib.Url,
@@ -311,46 +309,5 @@ func (ib *Backend) GetHealth(ic *Circle, withStats bool) interface{} {
 		Rewriting: ib.IsRewriting(),
 		WriteOnly: ib.IsWriteOnly(),
 	}
-	if !withStats {
-		return health
-	}
-	var wg sync.WaitGroup
-	var smap sync.Map
-	dbs := ib.GetDatabases()
-	for _, db := range dbs {
-		wg.Add(1)
-		go func(db string) {
-			defer wg.Done()
-			inplace, incorrect := 0, 0
-			measurements := ib.GetMeasurements(db)
-			for _, meas := range measurements {
-				key := GetKey(db, meas)
-				nb := ic.GetBackend(key)
-				if nb.Url == ib.Url {
-					inplace++
-				} else {
-					incorrect++
-				}
-			}
-			smap.Store(db, map[string]int{
-				"measurements": len(measurements),
-				"inplace":      inplace,
-				"incorrect":    incorrect,
-			})
-		}(db)
-	}
-	wg.Wait()
-	healthy := true
-	stats := make(map[string]map[string]int)
-	smap.Range(func(k, v interface{}) bool {
-		sm := v.(map[string]int)
-		stats[k.(string)] = sm
-		if sm["incorrect"] > 0 {
-			healthy = false
-		}
-		return true
-	})
-	health.Healthy = healthy
-	health.Stats = stats
 	return health
 }

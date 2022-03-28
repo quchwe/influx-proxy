@@ -15,9 +15,9 @@ import (
 )
 
 type LinePoint struct {
-	Db   string
-	Rp   string
-	Line []byte
+	Org    string
+	Bucket string
+	Line   []byte
 }
 
 func ScanKey(pointbuf []byte) (key string, err error) {
