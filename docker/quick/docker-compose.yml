@@ -3,7 +3,7 @@ version: "3.5"
 services:
 
   influx-proxy:
-    image: chengshiwen/influx-proxy:3.0.0
+    image: chengshiwen/influx-proxy:3.0.0-preview
     container_name: influx-proxy
     ports:
       - 7076:7076
