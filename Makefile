@@ -1,7 +1,7 @@
 # Makefile
 
 PROGRAM     := influx-proxy
-VERSION     := 3.0.0-snapshot
+VERSION     := 3.0.0-preview
 LDFLAGS     ?= "-s -w -X github.com/chengshiwen/influx-proxy/backend.Version=$(VERSION) -X github.com/chengshiwen/influx-proxy/backend.GitCommit=$(shell git rev-parse --short HEAD) -X 'github.com/chengshiwen/influx-proxy/backend.BuildTime=$(shell date '+%Y-%m-%d %H:%M:%S')'"
 GOBUILD_ENV = GO111MODULE=on CGO_ENABLED=0
 GOBUILD     = go build -o bin/$(PROGRAM) -a -ldflags $(LDFLAGS)
