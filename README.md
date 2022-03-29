@@ -140,43 +140,38 @@ The configuration settings are as follows:
 * `https_cert`: the ssl certificate to use when https is enabled, default is `empty`
 * `https_key`: use a separate private key location, default is `empty`
 
-## Query Commands
+## Write
 
-### Unsupported commands
+* [/api/v2/write](https://docs.influxdata.com/influxdb/v2.1/api/#operation/PostWrite) v2 supported
+* [/write](https://docs.influxdata.com/influxdb/v2.1/api/v1-compatibility/#operation/PostWriteV1) v1 compatibility not yet supported
 
-The following commands are forbid.
+## Query
 
-* `GRANT`
-* `REVOKE`
-* `KILL`
-* `EXPLAIN`
-* `SELECT INTO`
-* `CONTINUOUS QUERY`
-* `Multiple queries` delimited by semicolon `;`
-* `Multiple measurements` delimited by comma `,`
-* `Regexp measurement`
+* [/api/v2/query](https://docs.influxdata.com/influxdb/v2.1/api/#operation/PostQuery) v2 supported
+* [/query](https://docs.influxdata.com/influxdb/v2.1/api/v1-compatibility/#operation/PostQueryV1) v1 compatibility not yet supported
 
-### Supported commands
+### /api/v2/query
 
-Only support match the following commands.
+Note: `_measurement` must be specified
 
-* `select from`
-* `show from`
+```
+from(bucket: "example-bucket")
+    |> range(start: -1h)
+    |> filter(fn: (r) => r._measurement == "example-measurement" and r.tag == "example-tag")
+    |> filter(fn: (r) => r._field == "example-field")
+```
+
+### /query (not yet supported)
+
+Only support match the following commands, more details please see [InfluxQL support](https://docs.influxdata.com/influxdb/v2.1/query-data/influxql/#influxql-support).
+
+* `select from` (read-only)
+* `show databases`
 * `show measurements`
-* `show series`
-* `show field keys`
 * `show tag keys`
 * `show tag values`
-* `show stats`
-* `show databases`
-* `create database`
-* `drop database`
-* `show retention policies`
-* `create retention policy`
-* `alter retention policy`
-* `drop retention policy`
+* `show field keys`
 * `delete from`
-* `drop series from`
 * `drop measurement`
 * `on clause` (the `db` parameter takes precedence when the parameter is set in `/query` http endpoint)
 
