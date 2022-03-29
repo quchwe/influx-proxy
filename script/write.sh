@@ -1,11 +1,5 @@
 #!/bin/bash
 
-curl -X POST 'http://127.0.0.1:7076/query' --data-urlencode 'q=CREATE DATABASE db1'
-curl -X POST 'http://127.0.0.1:7076/query' --data-urlencode 'q=CREATE DATABASE db2'
-curl -X POST 'http://127.0.0.1:7076/query' --data-urlencode 'q=CREATE RETENTION POLICY rp2 ON db2 DURATION 0s REPLICATION 1 SHARD DURATION 168h'
-
-echo ""
-
 curl -i -X POST 'http://127.0.0.1:7076/api/v2/write?org=myorg&bucket=mybucket' --data-binary \
 'cpu1,host=server02 value=0.67,id=2i,running=true,status="ok"
 cpu1,host=server02,region=us-west value=0.55,id=2i,running=true,status="ok" 1422568543702900257
