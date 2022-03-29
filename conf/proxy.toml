@@ -13,6 +13,9 @@ https_enabled = false
 https_cert = ""
 https_key = ""
 
+# [dbrps]
+# "mydb/myrp" = "myorg/mybucket"
+
 [[circles]]
 name = "circle-1"
 

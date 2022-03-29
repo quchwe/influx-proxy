@@ -16,6 +16,7 @@ var (
 	ErrGetMeasurement    = errors.New("can't get measurement")
 	ErrEqualMeasurement  = errors.New("measurement should use ==")
 	ErrMultiMeasurements = errors.New("illegal multi measurements")
+	ErrDBRPNotMapping    = errors.New("db/rp not mapping")
 	ErrIllegalFluxQuery  = errors.New("illegal flux query")
 )
 

@@ -262,6 +262,65 @@ func (hb *HttpBackend) Query(req *http.Request, w http.ResponseWriter) (err erro
 	return
 }
 
+func (hb *HttpBackend) QueryV1(req *http.Request, w http.ResponseWriter, decompress bool) (qr *QueryResult) {
+	if req.Header.Get(HeaderQueryOrigin) == QueryParallel {
+		defer req.Body.Close()
+	}
+	qr = &QueryResult{}
+	if len(req.Form) == 0 {
+		req.Form = url.Values{}
+	}
+	req.Form.Del("u")
+	req.Form.Del("p")
+	req.ContentLength = 0
+	hb.SetAuthorization(req)
+
+	req.URL, qr.Err = url.Parse(hb.Url + "/query?" + req.Form.Encode())
+	if qr.Err != nil {
+		log.Print("internal url parse error: ", qr.Err)
+		return
+	}
+
+	q := strings.TrimSpace(req.FormValue("q"))
+	resp, err := hb.transport.RoundTrip(req)
+	if err != nil {
+		if req.Header.Get(HeaderQueryOrigin) != QueryParallel || err.Error() != "context canceled" {
+			qr.Err = err
+			log.Printf("query error: %s, the query is %s", err, q)
+		}
+		return
+	}
+	defer resp.Body.Close()
+	if w != nil {
+		CopyHeader(w.Header(), resp.Header)
+	}
+
+	respBody := resp.Body
+	if decompress && resp.Header.Get("Content-Encoding") == "gzip" {
+		b, err := gzip.NewReader(resp.Body)
+		if err != nil {
+			qr.Err = err
+			log.Printf("unable to decode gzip body: %s", err)
+			return
+		}
+		defer b.Close()
+		respBody = b
+	}
+
+	qr.Body, qr.Err = ioutil.ReadAll(respBody)
+	if qr.Err != nil {
+		log.Printf("read body error: %s, the query is %s", qr.Err, q)
+		return
+	}
+	if resp.StatusCode >= 400 {
+		rsp, _ := ResponseFromResponseBytes(qr.Body)
+		qr.Err = errors.New(rsp.Err)
+	}
+	qr.Header = resp.Header
+	qr.Status = resp.StatusCode
+	return
+}
+
 func (hb *HttpBackend) Close() {
 	hb.running.Store(false)
 	hb.transport.CloseIdleConnections()

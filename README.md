@@ -125,6 +125,7 @@ The configuration settings are as follows:
     * `url`: influxdb addr or other http backend which supports influxdb line protocol, `required`
     * `token`: influxdb token, `required`
     * `write_only`: whether to write only on the influxdb, default is `false`
+* `dbrps`: the key-value pair mapping from `db/rp` to `org/bucket`, for 1.x compatibility, default is `nil`
 * `listen_addr`: proxy listen addr, default is `:7076`
 * `data_dir`: data dir to save .dat .rec, default is `data`
 * `flush_size`: default is `10000`, wait 10000 points write
@@ -143,12 +144,12 @@ The configuration settings are as follows:
 ## Write
 
 * [/api/v2/write](https://docs.influxdata.com/influxdb/v2.1/api/#operation/PostWrite) v2 supported
-* [/write](https://docs.influxdata.com/influxdb/v2.1/api/v1-compatibility/#operation/PostWriteV1) v1 compatibility not yet supported
+* [/write](https://docs.influxdata.com/influxdb/v2.1/api/v1-compatibility/#operation/PostWriteV1) v1 compatibility supported
 
 ## Query
 
 * [/api/v2/query](https://docs.influxdata.com/influxdb/v2.1/api/#operation/PostQuery) v2 supported
-* [/query](https://docs.influxdata.com/influxdb/v2.1/api/v1-compatibility/#operation/PostQueryV1) v1 compatibility not yet supported
+* [/query](https://docs.influxdata.com/influxdb/v2.1/api/v1-compatibility/#operation/PostQueryV1) v1 compatibility supported
 
 ### /api/v2/query
 
@@ -161,7 +162,15 @@ from(bucket: "example-bucket")
     |> filter(fn: (r) => r._field == "example-field")
 ```
 
-### /query (not yet supported)
+### /query
+
+Note: `dbrps` must be specified like
+
+```
+"dbrps": {
+    "mydb/myrp": "myorg/mybucket"
+}
+```
 
 Only support match the following commands, more details please see [InfluxQL support](https://docs.influxdata.com/influxdb/v2.1/query-data/influxql/#influxql-support).
 

@@ -31,6 +31,7 @@
             ]
         }
     ],
+    "dbrps": {},
     "listen_addr": ":7076",
     "data_dir": "data",
     "flush_size": 10000,

@@ -6,6 +6,7 @@ package backend
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"log"
 	"math/rand"
@@ -19,6 +20,7 @@ import (
 
 type Proxy struct {
 	Circles []*Circle
+	dbrps   map[string][]string
 }
 
 func NewProxy(cfg *ProxyConfig) (ip *Proxy) {
@@ -29,23 +31,28 @@ func NewProxy(cfg *ProxyConfig) (ip *Proxy) {
 	}
 	ip = &Proxy{
 		Circles: make([]*Circle, len(cfg.Circles)),
+		dbrps:   make(map[string][]string),
 	}
 	for idx, circfg := range cfg.Circles {
 		ip.Circles[idx] = NewCircle(circfg, cfg, idx)
+	}
+	for key, value := range cfg.DBRPs {
+		ip.dbrps[key] = strings.Split(value, "/")
 	}
 	rand.Seed(time.Now().UnixNano())
 	return
 }
 
-func GetKey(org, bucket, meas string) string {
-	var b strings.Builder
-	b.Grow(len(org) + len(bucket) + len(meas) + 1)
-	b.WriteString(org)
-	b.WriteString(",")
-	b.WriteString(bucket)
-	b.WriteString(",")
-	b.WriteString(meas)
-	return b.String()
+func GetKey(elems ...string) string {
+	return strings.Join(elems, ",")
+}
+
+func (ip *Proxy) DBRP2OrgBucket(db, rp string) (string, string, error) {
+	dbrp := strings.TrimRight(fmt.Sprintf("%s/%s", db, rp), "/")
+	if v, ok := ip.dbrps[dbrp]; ok {
+		return v[0], v[1], nil
+	}
+	return "", "", ErrDBRPNotMapping
 }
 
 func (ip *Proxy) GetBackends(key string) []*Backend {
@@ -82,6 +89,39 @@ func (ip *Proxy) GetHealth() []interface{} {
 	return health
 }
 
+func (ip *Proxy) QueryV1(w http.ResponseWriter, req *http.Request) (body []byte, err error) {
+	q := strings.TrimSpace(req.FormValue("q"))
+	if q == "" {
+		return nil, ErrEmptyQuery
+	}
+
+	tokens, check, from := CheckQuery(q)
+	if !check {
+		return nil, ErrIllegalQL
+	}
+
+	db := req.FormValue("db")
+	if db == "" {
+		db, _ = GetDatabaseFromTokens(tokens)
+	}
+	if !CheckShowDatabasesFromTokens(tokens) {
+		if db == "" {
+			return nil, ErrDatabaseNotFound
+		}
+	}
+	rp := req.FormValue("rp")
+
+	selectOrShow := CheckSelectOrShowFromTokens(tokens)
+	if selectOrShow && from {
+		return QueryFromQL(w, req, ip, tokens, db, rp)
+	} else if selectOrShow && !from {
+		return QueryShowQL(w, req, ip, tokens)
+	} else if CheckDeleteOrDropMeasurementFromTokens(tokens) {
+		return QueryDeleteOrDropQL(w, req, ip, tokens, db, rp)
+	}
+	return nil, ErrIllegalQL
+}
+
 func (ip *Proxy) Query(w http.ResponseWriter, req *http.Request, org, query string) (err error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
@@ -92,13 +132,22 @@ func (ip *Proxy) Query(w http.ResponseWriter, req *http.Request, org, query stri
 		return
 	}
 	if bucket != "" && meas != "" {
-		return QueryWithBucketMeasurement(w, req, ip, org, bucket, meas)
+		return QueryWithFlux(w, req, ip, org, bucket, meas)
 	} else if bucket == "" {
 		return ErrGetBucket
 	} else if meas == "" {
 		return ErrGetMeasurement
 	}
 	return ErrIllegalFluxQuery
+}
+
+func (ip *Proxy) WriteV1(p []byte, db, rp, precision string) (err error) {
+	org, bucket, err := ip.DBRP2OrgBucket(db, rp)
+	if err != nil {
+		log.Printf("write v1 db/rp not mapping, db: %s, rp: %s", db, rp)
+		return
+	}
+	return ip.Write(p, org, bucket, precision)
 }
 
 func (ip *Proxy) Write(p []byte, org, bucket, precision string) (err error) {

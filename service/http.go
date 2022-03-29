@@ -40,6 +40,8 @@ func NewHttpService(cfg *backend.ProxyConfig) (hs *HttpService) { // nolint:goli
 
 func (hs *HttpService) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/ping", hs.HandlerPing)
+	mux.HandleFunc("/query", hs.HandlerQueryV1)
+	mux.HandleFunc("/write", hs.HandlerWriteV1)
 	mux.HandleFunc("/api/v2/query", hs.HandlerQuery)
 	mux.HandleFunc("/api/v2/write", hs.HandlerWrite)
 	mux.HandleFunc("/health", hs.HandlerHealth)
@@ -51,6 +53,76 @@ func (hs *HttpService) Register(mux *http.ServeMux) {
 func (hs *HttpService) HandlerPing(w http.ResponseWriter, req *http.Request) {
 	defer req.Body.Close()
 	hs.WriteHeader(w, 204)
+}
+
+func (hs *HttpService) HandlerQueryV1(w http.ResponseWriter, req *http.Request) {
+	defer req.Body.Close()
+	if !hs.checkMethodAndAuth(w, req, "GET", "POST") {
+		return
+	}
+
+	db := req.FormValue("db")
+	q := req.FormValue("q")
+	body, err := hs.ip.QueryV1(w, req)
+	if err != nil {
+		log.Printf("query error: %s, query: %s %s %s, client: %s", err, req.Method, db, q, req.RemoteAddr)
+		hs.WriteError(w, req, 400, err.Error())
+		return
+	}
+	hs.WriteBody(w, body)
+	if hs.queryTracing {
+		log.Printf("query: %s %s %s, client: %s", req.Method, db, q, req.RemoteAddr)
+	}
+}
+
+func (hs *HttpService) HandlerWriteV1(w http.ResponseWriter, req *http.Request) {
+	defer req.Body.Close()
+	if !hs.checkMethodAndAuth(w, req, "POST") {
+		return
+	}
+
+	precision := req.URL.Query().Get("precision")
+	switch precision {
+	case "", "n", "ns", "u", "ms", "s", "m", "h":
+		// it's valid
+		if precision == "" {
+			precision = "ns"
+		}
+	default:
+		hs.WriteError(w, req, 400, fmt.Sprintf("invalid precision %q (use n, ns, u, ms, s, m or h)", precision))
+		return
+	}
+
+	db := req.URL.Query().Get("db")
+	if db == "" {
+		hs.WriteError(w, req, 400, "database not found")
+		return
+	}
+	rp := req.URL.Query().Get("rp")
+
+	body := req.Body
+	if req.Header.Get("Content-Encoding") == "gzip" {
+		b, err := gzip.NewReader(body)
+		if err != nil {
+			hs.WriteError(w, req, 400, "unable to decode gzip body")
+			return
+		}
+		defer b.Close()
+		body = b
+	}
+	p, err := ioutil.ReadAll(body)
+	if err != nil {
+		hs.WriteError(w, req, 400, err.Error())
+		return
+	}
+
+	err = hs.ip.WriteV1(p, db, rp, precision)
+	if err == nil {
+		hs.WriteHeader(w, 204)
+	}
+	if hs.writeTracing {
+		log.Printf("write: %s %s %s %s, client: %s", db, rp, precision, p, req.RemoteAddr)
+	}
 }
 
 func (hs *HttpService) HandlerQuery(w http.ResponseWriter, req *http.Request) {

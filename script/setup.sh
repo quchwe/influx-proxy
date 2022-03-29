@@ -20,7 +20,7 @@ docker run -d --name influxdb-4 -p 8089:8086 ${OPTIONS} influxdb:2.1
 
 BASEDIR=$(cd $(dirname $0)/..; pwd)
 
-function set_token() {
+function setup() {
     until docker logs influxdb-$1 2>&1 | grep ':8086' &>/dev/null; do
         counter=$((counter+1))
         if [ $counter -eq 30 ]; then
@@ -29,8 +29,13 @@ function set_token() {
         fi
         sleep 0.5
     done
+    # setup
     docker exec -it influxdb-$1 influx setup -u influxdb -p influxdb -o myorg -b mybucket -f &> /dev/null
-    INFLUX_TOKEN=$(docker exec -it influxdb-$1 bash -c "influx auth list -u influxdb | tail -n 1" | cut -f 3)
+    # dbrp mapping
+    BUCKET_ID=$(docker exec -it influxdb-$1 influx bucket list -n mybucket --hide-headers | cut -f 1)
+    docker exec -it influxdb-$1 influx v1 dbrp create --db mydb --rp myrp --bucket-id ${BUCKET_ID} --default &> /dev/null
+    # set token
+    INFLUX_TOKEN=$(docker exec -it influxdb-$1 influx auth list -u influxdb --hide-headers | cut -f 3)
     if [[ -n $(sed --version 2> /dev/null | grep "GNU sed") ]]; then
         sed -i "$2s#\"token\": \".*\"#\"token\": \"${INFLUX_TOKEN}\"#" ${BASEDIR}/proxy.json
     else
@@ -38,7 +43,7 @@ function set_token() {
     fi
 }
 
-set_token 1 9
-set_token 2 14
-set_token 3 24
-set_token 4 29
+setup 1 9
+setup 2 14
+setup 3 24
+setup 4 29

@@ -7,6 +7,7 @@ package backend
 import (
 	"errors"
 	"log"
+	"strings"
 
 	"github.com/chengshiwen/influx-proxy/util"
 	jsoniter "github.com/json-iterator/go"
@@ -26,6 +27,7 @@ var (
 	ErrDuplicatedBackendName = errors.New("backend name duplicated")
 	ErrEmptyBackendUrl       = errors.New("backend url cannot be empty") // nolint:golint
 	ErrEmptyBackendToken     = errors.New("backend token cannot be empty")
+	ErrInvalidDBRPs          = errors.New("invalid dbrps")
 )
 
 type BackendConfig struct { // nolint:golint
@@ -41,21 +43,22 @@ type CircleConfig struct {
 }
 
 type ProxyConfig struct {
-	Circles         []*CircleConfig `mapstructure:"circles"`
-	ListenAddr      string          `mapstructure:"listen_addr"`
-	DataDir         string          `mapstructure:"data_dir"`
-	FlushSize       int             `mapstructure:"flush_size"`
-	FlushTime       int             `mapstructure:"flush_time"`
-	CheckInterval   int             `mapstructure:"check_interval"`
-	RewriteInterval int             `mapstructure:"rewrite_interval"`
-	ConnPoolSize    int             `mapstructure:"conn_pool_size"`
-	WriteTimeout    int             `mapstructure:"write_timeout"`
-	WriteTracing    bool            `mapstructure:"write_tracing"`
-	QueryTracing    bool            `mapstructure:"query_tracing"`
-	Token           string          `mapstructure:"token"`
-	HTTPSEnabled    bool            `mapstructure:"https_enabled"`
-	HTTPSCert       string          `mapstructure:"https_cert"`
-	HTTPSKey        string          `mapstructure:"https_key"`
+	Circles         []*CircleConfig   `mapstructure:"circles"`
+	DBRPs           map[string]string `mapstructure:"dbrps"`
+	ListenAddr      string            `mapstructure:"listen_addr"`
+	DataDir         string            `mapstructure:"data_dir"`
+	FlushSize       int               `mapstructure:"flush_size"`
+	FlushTime       int               `mapstructure:"flush_time"`
+	CheckInterval   int               `mapstructure:"check_interval"`
+	RewriteInterval int               `mapstructure:"rewrite_interval"`
+	ConnPoolSize    int               `mapstructure:"conn_pool_size"`
+	WriteTimeout    int               `mapstructure:"write_timeout"`
+	WriteTracing    bool              `mapstructure:"write_tracing"`
+	QueryTracing    bool              `mapstructure:"query_tracing"`
+	Token           string            `mapstructure:"token"`
+	HTTPSEnabled    bool              `mapstructure:"https_enabled"`
+	HTTPSCert       string            `mapstructure:"https_cert"`
+	HTTPSKey        string            `mapstructure:"https_key"`
 }
 
 func NewFileConfig(cfgfile string) (cfg *ProxyConfig, err error) {
@@ -124,6 +127,11 @@ func (cfg *ProxyConfig) checkConfig() (err error) {
 			if backend.Token == "" {
 				return ErrEmptyBackendToken
 			}
+		}
+	}
+	for k, v := range cfg.DBRPs {
+		if strings.TrimSpace(k) == "" || strings.Count(strings.Trim(v, " /"), "/") != 2 {
+			return ErrInvalidDBRPs
 		}
 	}
 	return

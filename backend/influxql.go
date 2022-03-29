@@ -16,20 +16,11 @@ import (
 
 var SupportCmds = util.NewSet(
 	"show measurements",
-	"show series",
 	"show field keys",
 	"show tag keys",
 	"show tag values",
-	"show stats",
 	"show databases",
-	"create database",
-	"drop database",
-	"show retention policies",
-	"create retention policy",
-	"alter retention policy",
-	"drop retention policy",
 	"delete from",
-	"drop series from",
 	"drop measurement",
 )
 
@@ -322,27 +313,14 @@ func CheckQuery(q string) (tokens []string, check bool, from bool) {
 	}
 	stmt3 := GetHeadStmtFromTokens(tokens, 3)
 	if SupportCmds[stmt3] {
-		return tokens, true, stmt3 == "drop series from"
+		return tokens, true, false
 	}
 	return tokens, false, false
 }
 
-func CheckDatabaseFromTokens(tokens []string) (check bool, show bool, alter bool, db string) {
+func CheckShowDatabasesFromTokens(tokens []string) (check bool) {
 	stmt := GetHeadStmtFromTokens(tokens, 2)
-	show = stmt == "show databases"
-	alter = stmt == "create database" || stmt == "drop database"
-	check = show || alter
-	if alter && len(tokens) >= 3 {
-		db = getDatabase(tokens[2:], "database")
-	}
-	return
-}
-
-func CheckRetentionPolicyFromTokens(tokens []string) (check bool) {
-	if len(tokens) >= 3 {
-		stmt := GetHeadStmtFromTokens(tokens, 3)
-		return stmt == "create retention policy" || stmt == "alter retention policy" || stmt == "drop retention policy"
-	}
+	check = stmt == "show databases"
 	return
 }
 
@@ -355,7 +333,7 @@ func CheckSelectOrShowFromTokens(tokens []string) (check bool) {
 func CheckDeleteOrDropMeasurementFromTokens(tokens []string) (check bool) {
 	if len(tokens) >= 3 {
 		stmt := GetHeadStmtFromTokens(tokens, 2)
-		return stmt == "delete from" || stmt == "drop measurement" || stmt == "drop series"
+		return stmt == "delete from" || stmt == "drop measurement"
 	}
 	return
 }
