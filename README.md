@@ -125,7 +125,9 @@ The configuration settings are as follows:
     * `url`: influxdb addr or other http backend which supports influxdb line protocol, `required`
     * `token`: influxdb token, `required`
     * `write_only`: whether to write only on the influxdb, default is `false`
-* `dbrps`: the key-value pair mapping from `db/rp` to `org/bucket`, for 1.x compatibility, default is `nil`
+* `dbrp`: dbrp mapping config for 1.x compatibility
+  * `separator`: the separator of the key-value pair mapping, for 1.x compatibility, default is `/`
+  * `mapping`: the key-value pair mapping from `db/rp` to `org/bucket`, for 1.x compatibility, default is `nil`
 * `listen_addr`: proxy listen addr, default is `:7076`
 * `data_dir`: data dir to save .dat .rec, default is `data`
 * `flush_size`: default is `10000`, wait 10000 points write
@@ -164,11 +166,14 @@ from(bucket: "example-bucket")
 
 ### /query
 
-Note: `dbrps` must be specified like
+Note: `dbrp mapping` must be specified like
 
 ```
-"dbrps": {
-    "mydb/myrp": "myorg/mybucket"
+"dbrp": {
+    "separator": "/",
+    "mapping": {
+        "mydb/myrp": "myorg/mybucket"
+    }
 }
 ```
 

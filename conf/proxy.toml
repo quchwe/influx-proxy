@@ -13,8 +13,11 @@ https_enabled = false
 https_cert = ""
 https_key = ""
 
-# [dbrps]
-# "mydb/myrp" = "myorg/mybucket"
+[dbrp]
+separator = "/"
+
+# [dbrp.mapping]
+# "db/rp" = "org/bucket"
 
 [[circles]]
 name = "circle-1"

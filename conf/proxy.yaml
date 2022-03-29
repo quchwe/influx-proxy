@@ -15,8 +15,10 @@ circles:
       - name: "influxdb-2-2"
         url: "http://127.0.0.1:8089"
         token: ""
-# dbrps:
-#   mydb/myrp: myorg/mybucket
+dbrp:
+  separator: "/"
+  # mapping:
+  #   db/rp: org/bucket
 listen_addr: ":7076"
 data_dir: "data"
 flush_size: 10000

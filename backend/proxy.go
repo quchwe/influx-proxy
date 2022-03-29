@@ -36,8 +36,8 @@ func NewProxy(cfg *ProxyConfig) (ip *Proxy) {
 	for idx, circfg := range cfg.Circles {
 		ip.Circles[idx] = NewCircle(circfg, cfg, idx)
 	}
-	for key, value := range cfg.DBRPs {
-		ip.dbrps[key] = strings.Split(value, "/")
+	for key, value := range cfg.DBRP.Mapping {
+		ip.dbrps[key] = strings.Split(value, cfg.DBRP.Separator)
 	}
 	rand.Seed(time.Now().UnixNano())
 	return

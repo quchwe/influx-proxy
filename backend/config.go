@@ -27,7 +27,7 @@ var (
 	ErrDuplicatedBackendName = errors.New("backend name duplicated")
 	ErrEmptyBackendUrl       = errors.New("backend url cannot be empty") // nolint:golint
 	ErrEmptyBackendToken     = errors.New("backend token cannot be empty")
-	ErrInvalidDBRPs          = errors.New("invalid dbrps")
+	ErrInvalidDBRPMapping    = errors.New("invalid dbrp mapping")
 )
 
 type BackendConfig struct { // nolint:golint
@@ -42,23 +42,28 @@ type CircleConfig struct {
 	Backends []*BackendConfig `mapstructure:"backends"`
 }
 
+type DBRPConfig struct {
+	Separator string            `mapstructure:"separator"`
+	Mapping   map[string]string `mapstructure:"mapping"`
+}
+
 type ProxyConfig struct {
-	Circles         []*CircleConfig   `mapstructure:"circles"`
-	DBRPs           map[string]string `mapstructure:"dbrps"`
-	ListenAddr      string            `mapstructure:"listen_addr"`
-	DataDir         string            `mapstructure:"data_dir"`
-	FlushSize       int               `mapstructure:"flush_size"`
-	FlushTime       int               `mapstructure:"flush_time"`
-	CheckInterval   int               `mapstructure:"check_interval"`
-	RewriteInterval int               `mapstructure:"rewrite_interval"`
-	ConnPoolSize    int               `mapstructure:"conn_pool_size"`
-	WriteTimeout    int               `mapstructure:"write_timeout"`
-	WriteTracing    bool              `mapstructure:"write_tracing"`
-	QueryTracing    bool              `mapstructure:"query_tracing"`
-	Token           string            `mapstructure:"token"`
-	HTTPSEnabled    bool              `mapstructure:"https_enabled"`
-	HTTPSCert       string            `mapstructure:"https_cert"`
-	HTTPSKey        string            `mapstructure:"https_key"`
+	Circles         []*CircleConfig `mapstructure:"circles"`
+	DBRP            *DBRPConfig     `mapstructure:"dbrp"`
+	ListenAddr      string          `mapstructure:"listen_addr"`
+	DataDir         string          `mapstructure:"data_dir"`
+	FlushSize       int             `mapstructure:"flush_size"`
+	FlushTime       int             `mapstructure:"flush_time"`
+	CheckInterval   int             `mapstructure:"check_interval"`
+	RewriteInterval int             `mapstructure:"rewrite_interval"`
+	ConnPoolSize    int             `mapstructure:"conn_pool_size"`
+	WriteTimeout    int             `mapstructure:"write_timeout"`
+	WriteTracing    bool            `mapstructure:"write_tracing"`
+	QueryTracing    bool            `mapstructure:"query_tracing"`
+	Token           string          `mapstructure:"token"`
+	HTTPSEnabled    bool            `mapstructure:"https_enabled"`
+	HTTPSCert       string          `mapstructure:"https_cert"`
+	HTTPSKey        string          `mapstructure:"https_key"`
 }
 
 func NewFileConfig(cfgfile string) (cfg *ProxyConfig, err error) {
@@ -78,6 +83,12 @@ func NewFileConfig(cfgfile string) (cfg *ProxyConfig, err error) {
 }
 
 func (cfg *ProxyConfig) setDefault() {
+	if cfg.DBRP == nil {
+		cfg.DBRP = &DBRPConfig{}
+	}
+	if cfg.DBRP.Separator == "" {
+		cfg.DBRP.Separator = "/"
+	}
 	if cfg.ListenAddr == "" {
 		cfg.ListenAddr = ":7076"
 	}
@@ -129,9 +140,9 @@ func (cfg *ProxyConfig) checkConfig() (err error) {
 			}
 		}
 	}
-	for k, v := range cfg.DBRPs {
-		if strings.TrimSpace(k) == "" || strings.Count(strings.Trim(v, " /"), "/") != 2 {
-			return ErrInvalidDBRPs
+	for k, v := range cfg.DBRP.Mapping {
+		if strings.TrimSpace(k) == "" || strings.Count(strings.Trim(v, cfg.DBRP.Separator), cfg.DBRP.Separator) != 1 {
+			return ErrInvalidDBRPMapping
 		}
 	}
 	return
