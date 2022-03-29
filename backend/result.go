@@ -32,7 +32,8 @@ type Result struct {
 // Response represents a list of statement results.
 type Response struct {
 	Results []*Result `json:"results,omitempty"`
-	Err     string    `json:"error,omitempty"`
+	Code    string    `json:"code,omitempty"`
+	Message string    `json:"message,omitempty"`
 }
 
 func (rsp *Response) Unmarshal(b []byte) (e error) {
@@ -84,7 +85,8 @@ func ResponseFromResults(results []*Result) (rsp *Response) {
 
 func ResponseFromError(err string) (rsp *Response) {
 	rsp = &Response{
-		Err: err,
+		Code:    "invalid",
+		Message: err,
 	}
 	return
 }

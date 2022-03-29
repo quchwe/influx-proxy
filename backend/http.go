@@ -314,7 +314,7 @@ func (hb *HttpBackend) QueryV1(req *http.Request, w http.ResponseWriter, decompr
 	}
 	if resp.StatusCode >= 400 {
 		rsp, _ := ResponseFromResponseBytes(qr.Body)
-		qr.Err = errors.New(rsp.Err)
+		qr.Err = errors.New(rsp.Message)
 	}
 	qr.Header = resp.Header
 	qr.Status = resp.StatusCode
