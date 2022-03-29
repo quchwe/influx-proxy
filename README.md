@@ -22,7 +22,8 @@ Since the InfluxDB Proxy v1 is limited by the only `ONE` database and the `KEYMA
 
 ## Features
 
-* Support query and write.
+* Support query and write v2.
+* Support query and write v1 compatibility.
 * Transparent for client, like cluster for client.
 * Cache data to file when write failed, then rewrite.
 * Support data sharding with consistent hash.
@@ -36,9 +37,21 @@ Since the InfluxDB Proxy v1 is limited by the only `ONE` database and the `KEYMA
 ## Requirements
 
 * Golang >= 1.14 with Go module support
-* InfluxDB >= 2.0 (For 1.x, please visit branch [master](https://github.com/chengshiwen/influx-proxy/tree/master))
+* InfluxDB >= 2.0 (For InfluxDB 1.x, please visit branch [master](https://github.com/chengshiwen/influx-proxy/tree/master))
 
 ## Usage
+
+#### Quickstart by Docker
+
+Download `docker-compose.yml`, `proxy.json` and `setup.sh` from [docker/quick](https://github.com/chengshiwen/influx-proxy/tree/influxdb-v2/docker/quick)
+
+```sh
+$ docker-compose up -d --scale influx-proxy=0
+$ bash setup.sh
+$ docker-compose up -d
+```
+
+An influx-proxy container (port: 7076) and 4 influxdb containers will start.
 
 #### Quickstart
 
@@ -67,6 +80,18 @@ $ # build current platform
 $ make build
 $ # build linux amd64
 $ make linux
+```
+
+## Development
+
+Before developing, you need to install and run [Docker](https://docs.docker.com/get-docker/)
+
+```sh
+$ ./script/setup.sh  # start 4 influxdb instances by docker
+$ make run
+$ ./script/write.sh  # write data
+$ ./script/query.sh  # query data
+$ ./script/remove.sh # remove 4 influxdb instances
 ```
 
 ## Tutorial
