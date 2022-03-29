@@ -110,6 +110,9 @@ func (ip *Proxy) QueryV1(w http.ResponseWriter, req *http.Request) (body []byte,
 		}
 	}
 	rp := req.FormValue("rp")
+	if rp == "" {
+		rp, _ = GetRetentionPolicyFromTokens(tokens)
+	}
 
 	selectOrShow := CheckSelectOrShowFromTokens(tokens)
 	if selectOrShow && from {
