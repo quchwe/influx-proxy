@@ -20,6 +20,14 @@ docker run -d --name influxdb-4 -p 8089:8086 ${OPTIONS} influxdb:2.1
 
 BASEDIR=$(cd $(dirname $0)/..; pwd)
 
+function sedx() {
+    if [[ -n $(sed --version 2> /dev/null | grep "GNU sed") ]]; then
+        sed -i "$@"
+    else
+        sed -i '' "$@"
+    fi
+}
+
 function setup() {
     until docker logs influxdb-$1 2>&1 | grep ':8086' &>/dev/null; do
         counter=$((counter+1))
@@ -36,12 +44,10 @@ function setup() {
     docker exec -it influxdb-$1 influx v1 dbrp create --db mydb --rp myrp --bucket-id ${BUCKET_ID} --default &> /dev/null
     # set token
     INFLUX_TOKEN=$(docker exec -it influxdb-$1 influx auth list -u influxdb --hide-headers | cut -f 3)
-    if [[ -n $(sed --version 2> /dev/null | grep "GNU sed") ]]; then
-        sed -i "$2s#\"token\": \".*\"#\"token\": \"${INFLUX_TOKEN}\"#" ${BASEDIR}/proxy.json
-    else
-        sed -i '' "$2s#\"token\": \".*\"#\"token\": \"${INFLUX_TOKEN}\"#" ${BASEDIR}/proxy.json
-    fi
+    sedx "$2s#\"token\": \".*\"#\"token\": \"${INFLUX_TOKEN}\"#" ${BASEDIR}/proxy.json
 }
+
+sedx '36s#"mapping": {.*}#"mapping": {"mydb": "myorg/mybucket", "mydb/myrp": "myorg/mybucket"}#' ${BASEDIR}/proxy.json
 
 setup 1 9
 setup 2 14
