@@ -263,9 +263,6 @@ func (hb *HttpBackend) Query(req *http.Request, w http.ResponseWriter) (err erro
 }
 
 func (hb *HttpBackend) QueryV1(req *http.Request, w http.ResponseWriter, decompress bool) (qr *QueryResult) {
-	if req.Header.Get(HeaderQueryOrigin) == QueryParallel {
-		defer req.Body.Close()
-	}
 	qr = &QueryResult{}
 	if len(req.Form) == 0 {
 		req.Form = url.Values{}
