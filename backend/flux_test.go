@@ -124,6 +124,13 @@ data() |> filter(fn: (r) => r._measurement == "m1")`,
 			want: "",
 			werr: ErrMultiMeasurements,
 		},
+		{
+			name: "test10",
+			have: `from(bucket: "example-bucket")
+|> range(start:-1d)
+|> filter(fn: (r) => r["_measurement"] == "example-measurement")`,
+			want: "example-measurement",
+		},
 	}
 	for _, tt := range tests {
 		got, err := ParseMeasurement(tt.have)

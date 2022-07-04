@@ -55,8 +55,11 @@ func ParseBucket(query string) (bucket string, err error) {
 func ParseMeasurement(query string) (measurement string, err error) {
 	items := strings.Split(query, "._measurement")
 	if len(items) < 2 {
-		err = ErrGetMeasurement
-		return
+		items = strings.Split(query, `["_measurement"]`)
+		if len(items) < 2 {
+			err = ErrGetMeasurement
+			return
+		}
 	}
 	if len(items) > 2 {
 		err = ErrMultiMeasurements
