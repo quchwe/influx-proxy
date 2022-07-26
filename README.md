@@ -37,9 +37,11 @@ Since the InfluxDB Proxy v1 is limited by the only `ONE` database and the `KEYMA
 * Support database sharding with consistent hash.
 * Support tools to rebalance, recovery, resync and cleanup.
 * Load config file and no longer depend on python and redis.
+* Support hot-reloading of config file when calling /reload api.
 * Support both rp and precision parameter when writing data.
 * Support influxdb-java, influxdb shell and grafana.
 * Support prometheus remote read and write.
+* Support prometheus metrics and monitor.
 * Support authentication and https.
 * Support authentication encryption.
 * Support health status query.
