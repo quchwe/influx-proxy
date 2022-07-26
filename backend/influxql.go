@@ -128,14 +128,9 @@ func ScanToken(data []byte, atEOF bool) (advance int, token []byte, err error) {
 		}
 	case '.':
 		advance = start + 1
-		for ; advance < len(data); advance++ {
-			if data[advance] != '.' {
-				break
-			}
-		}
 	default:
 		advance = bytes.IndexFunc(data[start:], func(r rune) bool {
-			return r == ' '
+			return r == ' ' || r == '.'
 		})
 		if advance == -1 {
 			advance = len(data)
@@ -179,6 +174,10 @@ func GetDatabaseFromInfluxQL(q string) (m string, err error) {
 	return GetDatabaseFromTokens(ScanTokens(q, 0))
 }
 
+func GetRetentionPolicyFromInfluxQL(q string) (m string, err error) {
+	return GetRetentionPolicyFromTokens(ScanTokens(q, 0))
+}
+
 func GetMeasurementFromInfluxQL(q string) (m string, err error) {
 	return GetMeasurementFromTokens(ScanTokens(q, 0))
 }
@@ -188,6 +187,15 @@ func GetDatabaseFromTokens(tokens []string) (m string, err error) {
 	// handle subquery
 	if strings.HasPrefix(strings.ToLower(strings.TrimLeft(m, "( ")), "select") {
 		m, err = GetDatabaseFromInfluxQL(m[1:])
+	}
+	return
+}
+
+func GetRetentionPolicyFromTokens(tokens []string) (m string, err error) {
+	m, err = GetIdentifierFromTokens(tokens, []string{"from"}, getRetentionPolicy)
+	// handle subquery
+	if strings.HasPrefix(strings.ToLower(strings.TrimLeft(m, "( ")), "select") {
+		m, err = GetRetentionPolicyFromInfluxQL(m[1:])
 	}
 	return
 }
@@ -216,80 +224,77 @@ func GetIdentifierFromTokens(tokens []string, keywords []string, fn func([]strin
 }
 
 func getDatabase(tokens []string, keyword string) (m string) {
+	if len(tokens) == 0 {
+		return
+	}
 	m = tokens[0]
 	if m[0] == '(' {
 		return
 	}
 
+	if keyword == "from" {
+		if !(len(tokens) >= 4 && tokens[1] == "." && tokens[3] == ".") && !(len(tokens) >= 3 && tokens[1] == "." && tokens[2] == ".") {
+			return ""
+		}
+	}
 	if m[0] == '"' || m[0] == '\'' {
 		m = m[1 : len(m)-1]
-		if keyword == "from" && (len(tokens) < 3 || (tokens[1] != "." && tokens[1] != "..")) {
-			return ""
-		}
+	}
+	return
+}
+
+func getRetentionPolicy(tokens []string, keyword string) (m string) {
+	if len(tokens) == 0 {
+		return
+	}
+	if tokens[0][0] == '(' {
+		m = tokens[0]
+		return
+	} else if tokens[0][0] == '/' {
+		return
+	} else if len(tokens) >= 3 && tokens[1] == "." && tokens[2] == "." {
 		return
 	}
 
-	index := strings.IndexByte(m, '.')
-	if index == -1 {
-		if keyword == "from" {
-			return ""
-		}
+	if len(tokens) >= 5 && tokens[1] == "." && tokens[3] == "." {
+		m = tokens[2]
+	} else if len(tokens) >= 3 && tokens[1] == "." {
+		m = tokens[0]
+	} else {
 		return
-	} else if index == len(m)-1 {
-		return ""
 	}
-
-	m = m[:index]
+	if m[0] == '"' || m[0] == '\'' {
+		m = m[1 : len(m)-1]
+	}
 	return
 }
 
 func getMeasurement(tokens []string, keyword string) (m string) {
-	if len(tokens) >= 3 && (tokens[1] == "." || tokens[1] == "..") {
-		if len(tokens) >= 5 && tokens[3] == "." {
-			m = tokens[4]
-		} else {
-			m = tokens[2]
-		}
+	if len(tokens) == 0 {
+		return
+	}
+	if tokens[0][0] == '(' {
+		m = tokens[0]
+		return
+	} else if tokens[0][0] == '/' {
+		m = strings.Join(tokens[:], "")
+		advance, _, _ := FindEndWithQuote([]byte(m), 0, '/')
+		return m[:advance]
+	}
+
+	if len(tokens) >= 5 && tokens[1] == "." && tokens[3] == "." {
+		m = tokens[4]
+	} else if len(tokens) >= 4 && tokens[1] == "." && tokens[2] == "." {
+		m = tokens[3]
+	} else if len(tokens) >= 3 && tokens[1] == "." {
+		m = tokens[2]
 	} else {
 		m = tokens[0]
 	}
-
-	if m[0] == '(' || m[0] == '/' {
-		return
-	}
-
 	if m[0] == '"' || m[0] == '\'' {
 		m = m[1 : len(m)-1]
-		return
-	}
-
-	index := FindLastIndexWithIdent(m)
-	if index == -1 {
-		return
-	}
-
-	m = m[index+1:]
-	if m[0] == '"' || m[0] == '\'' {
-		m = strings.ReplaceAll(m[1:len(m)-1], `\"`, `"`)
 	}
 	return
-}
-
-func FindLastIndexWithIdent(m string) (i int) {
-	i = len(m) - 1
-	if m[i] == '"' || m[i] == '\'' {
-		for i = i - 1; i >= 0; i-- {
-			if m[i] == '"' || m[i] == '\'' {
-				if i > 0 && m[i-1] == '\\' {
-					i--
-				} else {
-					break
-				}
-			}
-		}
-		return i - 1
-	}
-	return strings.LastIndexByte(m, '.')
 }
 
 func CheckQuery(q string) (tokens []string, check bool, from bool) {

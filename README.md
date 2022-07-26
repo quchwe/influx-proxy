@@ -1,10 +1,18 @@
 # InfluxDB Proxy
 
+[![CN doc](https://img.shields.io/badge/文档-中文版-blue.svg)](https://github.com/chengshiwen/influx-proxy/wiki)
+[![EN doc](https://img.shields.io/badge/document-English-blue.svg)](https://github.com/chengshiwen/influx-proxy/blob/master/README.md)
+[![Go Report Card](https://goreportcard.com/badge/chengshiwen/influx-proxy)](https://goreportcard.com/report/chengshiwen/influx-proxy)
+[![LICENSE](https://img.shields.io/github/license/chengshiwen/influx-proxy.svg)](https://github.com/chengshiwen/influx-proxy/blob/master/LICENSE)
+[![Releases](https://img.shields.io/github/v/release/chengshiwen/influx-proxy.svg)](https://github.com/chengshiwen/influx-proxy/releases)
+![GitHub stars](https://img.shields.io/github/stars/chengshiwen/influx-proxy.svg?label=github%20stars&logo=github)
+[![Docker pulls](https://img.shields.io/docker/pulls/chengshiwen/influx-proxy.svg)](https://hub.docker.com/r/chengshiwen/influx-proxy)
+
 This project adds a basic high availability and consistent hash layer to InfluxDB.
 
-NOTE: influx-proxy must be built with Go 1.14+ with Go module support, don't implement udp.
+NOTE: influx-proxy must be built with Go 1.16+ with Go module support, don't implement udp.
 
-NOTE: [InfluxDB Cluster](https://github.com/chengshiwen/influxdb-cluster) for replacing [InfluxDB Enterprise](https://docs.influxdata.com/enterprise_influxdb/v1.8/) is coming, which is better than InfluxDB Proxy.
+NOTE: [InfluxDB Cluster](https://github.com/chengshiwen/influxdb-cluster) - open source alternative to [InfluxDB Enterprise](https://docs.influxdata.com/enterprise_influxdb/v1.8/) has been released, which is better than InfluxDB Proxy.
 
 ## Why
 
@@ -41,10 +49,20 @@ Since the InfluxDB Proxy v1 is limited by the only `ONE` database and the `KEYMA
 
 ## Requirements
 
-* Golang >= 1.14 with Go module support
-* InfluxDB 1.2 - 1.8 (For 2.x, please visit branch [influxdb-v2](https://github.com/chengshiwen/influx-proxy/tree/influxdb-v2))
+* Golang >= 1.16 with Go module support
+* InfluxDB 1.2 - 1.8 (For InfluxDB 2.x, please visit branch [influxdb-v2](https://github.com/chengshiwen/influx-proxy/tree/influxdb-v2))
 
 ## Usage
+
+#### Quickstart by Docker
+
+Download `docker-compose.yml` and `proxy.json` from [docker/quick](https://github.com/chengshiwen/influx-proxy/tree/master/docker/quick)
+
+```sh
+$ docker-compose up -d
+```
+
+An influx-proxy container (port: 7076) and 4 influxdb containers will start.
 
 #### Quickstart
 
@@ -75,9 +93,17 @@ $ # build linux amd64
 $ make linux
 ```
 
-## Tutorial
+## Development
 
-[Chinese](https://git.io/influx-proxy-wiki)
+Before developing, you need to install and run [Docker](https://docs.docker.com/get-docker/)
+
+```sh
+$ ./script/setup.sh  # start 4 influxdb instances by docker
+$ make run
+$ ./script/write.sh  # write data
+$ ./script/query.sh  # query data
+$ ./script/remove.sh # remove 4 influxdb instances
+```
 
 ## Description
 
@@ -149,6 +175,7 @@ The configuration settings are as follows:
 * `auth_encrypt`: whether to encrypt auth (username/password), default is `false`
 * `write_tracing`: enable logging for the write, default is `false`
 * `query_tracing`: enable logging for the query, default is `false`
+* `pprof_enabled`: enable `/debug/pprof` HTTP endpoint, default is `false`
 * `https_enabled`: enable https, default is `false`
 * `https_cert`: the ssl certificate to use when https is enabled, default is `empty`
 * `https_key`: use a separate private key location, default is `empty`
@@ -191,7 +218,8 @@ Only support match the following commands.
 * `delete from`
 * `drop series from`
 * `drop measurement`
-* `on clause` (the `db` parameter takes precedence when the parameter is set in `/query` http endpoint)
+* `on clause`
+* `from clause` like `from <db>.<rp>.<measurement>`
 
 ## HTTP Endpoints
 

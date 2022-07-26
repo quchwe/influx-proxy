@@ -47,6 +47,7 @@ type HttpService struct { // nolint:golint
 	authEncrypt  atomic.Value
 	writeTracing atomic.Value
 	queryTracing atomic.Value
+	pprofEnabled atomic.Value
 }
 
 func NewHttpService(cfg *backend.ProxyConfig) (hs *HttpService) { // nolint:golint
@@ -66,6 +67,7 @@ func (hs *HttpService) setConfig(cfg *backend.ProxyConfig) {
 	hs.authEncrypt.Store(cfg.AuthEncrypt)
 	hs.writeTracing.Store(cfg.WriteTracing)
 	hs.queryTracing.Store(cfg.QueryTracing)
+	hs.pprofEnabled.Store(cfg.PprofEnabled)
 }
 
 func (hs *HttpService) Register(mux *http.ServeMux) {
@@ -86,8 +88,10 @@ func (hs *HttpService) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/prom/read", hs.HandlerPromRead)
 	mux.HandleFunc("/api/v1/prom/write", hs.HandlerPromWrite)
 	mux.HandleFunc("/metrics", promhttp.Handler().ServeHTTP)
-	mux.HandleFunc("/debug/pprof/", pprof.Index)
-	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	if hs.pprofEnabled.Load().(bool) {
+		mux.HandleFunc("/debug/pprof/", pprof.Index)
+		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	}
 }
 
 func (hs *HttpService) HandlerPing(w http.ResponseWriter, req *http.Request) {
@@ -529,7 +533,7 @@ func (hs *HttpService) HandlerPromRead(w http.ResponseWriter, req *http.Request)
 	q := readReq.Queries[0]
 	for _, m := range q.Matchers {
 		if m.Name == "__name__" {
-			metric = m.Name
+			metric = m.Value
 		}
 	}
 	if metric == "" {
