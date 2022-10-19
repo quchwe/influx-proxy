@@ -22,12 +22,16 @@ import (
 )
 
 var (
-	ErrBadRequest   = errors.New("bad request")
-	ErrUnauthorized = errors.New("unauthorized")
-	ErrNotFound     = errors.New("not found")
-	ErrInternal     = errors.New("internal error")
-	ErrUnavailable  = errors.New("unavailable error")
-	ErrUnknown      = errors.New("unknown error")
+	ErrBadRequest          = errors.New("bad request")
+	ErrUnauthorized        = errors.New("unauthorized")
+	ErrForbidden           = errors.New("forbidden")
+	ErrNotFound            = errors.New("not found")
+	ErrTooLarge            = errors.New("request too large")
+	ErrUnprocessableEntity = errors.New("unprocessable entity")
+	ErrTooManyRequests     = errors.New("too many requests")
+	ErrInternal            = errors.New("internal error")
+	ErrUnavailable         = errors.New("unavailable error")
+	ErrUnknown             = errors.New("unknown error")
 )
 
 const (
@@ -220,13 +224,21 @@ func (hb *HttpBackend) WriteStream(org, bucket string, stream io.Reader, compres
 		err = ErrBadRequest
 	case 401:
 		err = ErrUnauthorized
+	case 403:
+		err = ErrForbidden
 	case 404:
 		err = ErrNotFound
+	case 413:
+		err = ErrTooLarge
+	case 422:
+		err = ErrUnprocessableEntity
+	case 429:
+		err = ErrTooManyRequests
 	case 500:
 		err = ErrInternal
 	case 503:
 		err = ErrUnavailable
-	default: // mostly tcp connection timeout, or request entity too large
+	default: // mostly tcp connection timeout
 		err = ErrUnknown
 	}
 	return

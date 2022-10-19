@@ -182,6 +182,9 @@ func (ib *Backend) FlushBuffer(org, bucket string) {
 			case ErrNotFound:
 				log.Printf("bad backend, drop all data")
 				return
+			case ErrUnprocessableEntity:
+				log.Printf("bad entity, drop partial data")
+				return
 			default:
 				log.Printf("write http error: %s %s %s, length: %d", ib.Url, org, bucket, len(p))
 			}
@@ -266,6 +269,9 @@ func (ib *Backend) Rewrite() (err error) {
 		err = nil
 	case ErrNotFound:
 		log.Printf("bad backend, drop all data")
+		err = nil
+	case ErrUnprocessableEntity:
+		log.Printf("bad entity, drop partial data")
 		err = nil
 	default:
 		log.Printf("rewrite http error: %s %s %s, length: %d", ib.Url, org, bucket, len(p[1]))
