@@ -6,6 +6,8 @@ curl -X POST 'http://127.0.0.1:7076/api/v2/query?org=myorg' -H 'Content-type: ap
 curl -X POST 'http://127.0.0.1:7076/api/v2/query?org=myorg' -H 'Content-type: application/vnd.flux' -d 'from(bucket:"mybucket") |> range(start:0) |> filter(fn: (r) => r._measurement == "cpu2")'
 curl -X POST 'http://127.0.0.1:7076/api/v2/query?org=myorg' -H 'Content-type: application/vnd.flux' -d 'from(bucket:"mybucket") |> range(start:0) |> filter(fn: (r) => r._measurement == "cpu3")'
 curl -X POST 'http://127.0.0.1:7076/api/v2/query?org=myorg' -H 'Content-type: application/vnd.flux' -d 'from(bucket:"mybucket") |> range(start:0) |> filter(fn: (r) => r._measurement == "cpu4")'
+curl -X POST 'http://127.0.0.1:7076/api/v2/query?org=myorg' -H 'Content-type: application/vnd.flux' -d "from(bucket:\"mybucket\") |> range(start:0) |> filter(fn: (r) => r._measurement == \"measurement with spaces, commas and 'quotes'\")"
+curl -X POST 'http://127.0.0.1:7076/api/v2/query?org=myorg' -H 'Content-type: application/vnd.flux' -d "from(bucket:\"mybucket\") |> range(start:0) |> filter(fn: (r) => r._measurement == \"'measurement with spaces, commas and 'quotes''\")"
 curl -X POST 'http://127.0.0.1:7076/api/v2/query?org=myorg' -H 'Content-type: application/vnd.flux' -d 'from(bucket:"mybucket") |> range(start:0) |> filter(fn: (r) => r._measurement == "measurement with spaces, commas and \"quotes\"")'
 curl -X POST 'http://127.0.0.1:7076/api/v2/query?org=myorg' -H 'Content-type: application/vnd.flux' -d 'from(bucket:"mybucket") |> range(start:0) |> filter(fn: (r) => r._measurement == "\"measurement with spaces, commas and \"quotes\"\"")'
 
@@ -58,6 +60,8 @@ curl -G 'http://127.0.0.1:7076/query?db=mydb' --data-urlencode 'q=select * from 
 curl -G 'http://127.0.0.1:7076/query?db=mydb&rp=myrp' --data-urlencode 'q=select * from cpu6'
 curl -G 'http://127.0.0.1:7076/query?db=mydb' --data-urlencode 'q=select * from myrp.cpu7;'
 curl -G 'http://127.0.0.1:7076/query?db=mydb' --data-urlencode 'q=select * from myrp.cpu8'
+curl -G 'http://127.0.0.1:7076/query?db=mydb' --data-urlencode "q=select * from \"measurement v1 with spaces, commas and 'quotes'\""
+curl -G 'http://127.0.0.1:7076/query?db=mydb' --data-urlencode "q=select * from \"'measurement v1 with spaces, commas and 'quotes''\""
 curl -G 'http://127.0.0.1:7076/query?db=mydb&rp=myrp' --data-urlencode 'q=select * from "measurement v1 with spaces, commas and \"quotes\""'
 curl -G 'http://127.0.0.1:7076/query?db=mydb' --data-urlencode 'q=select * from "\"measurement v1 with spaces, commas and \"quotes\"\""'
 
@@ -104,7 +108,6 @@ curl -G 'http://127.0.0.1:7076/query?db=mydb' --data-urlencode 'q=drop series fr
 curl -G 'http://127.0.0.1:7076/query?db=mydb' --data-urlencode 'q=drop measurement'
 curl -G 'http://127.0.0.1:7076/query' --data-urlencode 'q=CREATE DATABASE'
 curl -G 'http://127.0.0.1:7076/query' --data-urlencode 'q=drop database '
-curl -G 'http://127.0.0.1:7076/query' --data-urlencode 'q=SHOW retention policies on newdb'
 curl -G 'http://127.0.0.1:7076/query' --data-urlencode 'q=show TAG keys test from mem'
 
 
@@ -115,12 +118,16 @@ curl -X POST 'http://127.0.0.1:7076/query?db=mydb' --data-urlencode 'q=delete fr
 curl -X POST 'http://127.0.0.1:7076/query?db=mydb' --data-urlencode 'q=delete from cpu6'
 curl -X POST 'http://127.0.0.1:7076/query?db=mydb' --data-urlencode 'q=drop measurement cpu7'
 curl -X POST 'http://127.0.0.1:7076/query?db=mydb' --data-urlencode 'q=drop measurement cpu8'
+curl -X POST 'http://127.0.0.1:7076/query?db=mydb' --data-urlencode "q=delete from \"measurement v1 with spaces, commas and 'quotes'\""
+curl -X POST 'http://127.0.0.1:7076/query?db=mydb' --data-urlencode "q=drop measurement \"'measurement v1 with spaces, commas and 'quotes''\""
 curl -X POST 'http://127.0.0.1:7076/query?db=mydb' --data-urlencode 'q=delete from "measurement v1 with spaces, commas and \"quotes\""'
 curl -X POST 'http://127.0.0.1:7076/query?db=mydb' --data-urlencode 'q=drop measurement "\"measurement v1 with spaces, commas and \"quotes\"\""'
 curl -G 'http://127.0.0.1:7076/query?db=mydb' --data-urlencode 'q=select * from cpu5;'
 curl -G 'http://127.0.0.1:7076/query?db=mydb' --data-urlencode 'q=select * from cpu6'
 curl -G 'http://127.0.0.1:7076/query?db=mydb' --data-urlencode 'q=select * from myrp.cpu7;'
 curl -G 'http://127.0.0.1:7076/query?db=mydb' --data-urlencode 'q=select * from myrp.cpu8'
+curl -G 'http://127.0.0.1:7076/query?db=mydb' --data-urlencode "q=select * from \"measurement v1 with spaces, commas and 'quotes'\""
+curl -G 'http://127.0.0.1:7076/query?db=mydb' --data-urlencode "q=select * from \"'measurement v1 with spaces, commas and 'quotes''\""
 curl -G 'http://127.0.0.1:7076/query?db=mydb' --data-urlencode 'q=select * from "measurement v1 with spaces, commas and \"quotes\""'
 curl -G 'http://127.0.0.1:7076/query?db=mydb' --data-urlencode 'q=select * from "\"measurement v1 with spaces, commas and \"quotes\"\""'
 curl -G 'http://127.0.0.1:7076/query' --data-urlencode 'q=show databases'

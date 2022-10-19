@@ -20,11 +20,26 @@ import (
 	"github.com/chengshiwen/influx-proxy/util"
 )
 
+type ServeMux struct {
+	*http.ServeMux
+}
+
+func NewServeMux() *ServeMux {
+	return &ServeMux{ServeMux: http.NewServeMux()}
+}
+
+func (mux *ServeMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("X-Influxdb-Version", backend.Version)
+	w.Header().Add("X-Influxdb-Build", "InfluxDB Proxy")
+	mux.ServeMux.ServeHTTP(w, r)
+}
+
 type HttpService struct { // nolint:golint
 	ip           *backend.Proxy
 	token        string
 	writeTracing bool
 	queryTracing bool
+	pprofEnabled bool
 }
 
 func NewHttpService(cfg *backend.ProxyConfig) (hs *HttpService) { // nolint:golint
@@ -34,46 +49,109 @@ func NewHttpService(cfg *backend.ProxyConfig) (hs *HttpService) { // nolint:goli
 		token:        cfg.Token,
 		writeTracing: cfg.WriteTracing,
 		queryTracing: cfg.QueryTracing,
+		pprofEnabled: cfg.PprofEnabled,
 	}
 	return
 }
 
-func (hs *HttpService) Register(mux *http.ServeMux) {
+func (hs *HttpService) Register(mux *ServeMux) {
 	mux.HandleFunc("/ping", hs.HandlerPing)
-	mux.HandleFunc("/query", hs.HandlerQueryV1)
-	mux.HandleFunc("/write", hs.HandlerWriteV1)
-	mux.HandleFunc("/api/v2/query", hs.HandlerQuery)
-	mux.HandleFunc("/api/v2/write", hs.HandlerWrite)
+	mux.HandleFunc("/query", hs.HandlerQuery)
+	mux.HandleFunc("/write", hs.HandlerWrite)
+	mux.HandleFunc("/api/v2/query", hs.HandlerQueryV2)
+	mux.HandleFunc("/api/v2/write", hs.HandlerWriteV2)
 	mux.HandleFunc("/health", hs.HandlerHealth)
 	mux.HandleFunc("/replica", hs.HandlerReplica)
-	mux.HandleFunc("/debug/pprof/", pprof.Index)
-	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	if hs.pprofEnabled {
+		mux.HandleFunc("/debug/pprof/", pprof.Index)
+		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	}
 }
 
 func (hs *HttpService) HandlerPing(w http.ResponseWriter, req *http.Request) {
-	hs.WriteHeader(w, 204)
+	w.WriteHeader(http.StatusNoContent)
 }
 
-func (hs *HttpService) HandlerQueryV1(w http.ResponseWriter, req *http.Request) {
+func (hs *HttpService) HandlerQuery(w http.ResponseWriter, req *http.Request) {
 	if !hs.checkMethodAndAuth(w, req, "GET", "POST") {
 		return
 	}
 
 	db := req.FormValue("db")
 	q := req.FormValue("q")
-	body, err := hs.ip.QueryV1(w, req)
+	body, err := hs.ip.Query(w, req)
 	if err != nil {
-		log.Printf("query error: %s, query: %s %s %s, client: %s", err, req.Method, db, q, req.RemoteAddr)
-		hs.WriteError(w, req, 400, err.Error())
+		log.Printf("influxql query error: %s, query: %s, db: %s, client: %s", err, q, db, req.RemoteAddr)
+		hs.WriteError(w, req, http.StatusBadRequest, err.Error())
 		return
 	}
 	hs.WriteBody(w, body)
 	if hs.queryTracing {
-		log.Printf("query: %s %s %s, client: %s", req.Method, db, q, req.RemoteAddr)
+		log.Printf("influxql query: %s, db: %s, client: %s", q, db, req.RemoteAddr)
 	}
 }
 
-func (hs *HttpService) HandlerWriteV1(w http.ResponseWriter, req *http.Request) {
+func (hs *HttpService) HandlerQueryV2(w http.ResponseWriter, req *http.Request) {
+	if !hs.checkMethodAndAuth(w, req, "POST") {
+		return
+	}
+
+	// use org, ignore orgID
+	org := req.URL.Query().Get("org")
+	if org == "" {
+		hs.WriteError(w, req, http.StatusBadRequest, "org not found")
+		return
+	}
+
+	var contentType = "application/json"
+	if ct := req.Header.Get("Content-Type"); ct != "" {
+		contentType = ct
+	}
+	mt, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		hs.WriteError(w, req, http.StatusBadRequest, err.Error())
+		return
+	}
+	rbody, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		hs.WriteError(w, req, http.StatusBadRequest, err.Error())
+		return
+	}
+	qr := &backend.QueryRequest{}
+	switch mt {
+	case "application/vnd.flux":
+		qr.Query = string(rbody)
+	case "application/json":
+		fallthrough
+	default:
+		if err = json.Unmarshal(rbody, qr); err != nil {
+			hs.WriteError(w, req, http.StatusBadRequest, fmt.Sprintf("failed parsing request body as JSON; if sending a raw Flux script, set 'Content-Type: application/vnd.flux' in your request headers: %s", err))
+			return
+		}
+	}
+
+	if qr.Query == "" && qr.Spec == nil {
+		hs.WriteError(w, req, http.StatusBadRequest, "request body requires either spec or query")
+		return
+	}
+	if qr.Type != "" && qr.Type != "flux" {
+		hs.WriteError(w, req, http.StatusBadRequest, fmt.Sprintf("unknown query type: %s", qr.Type))
+		return
+	}
+
+	req.Body = ioutil.NopCloser(bytes.NewBuffer(rbody))
+	err = hs.ip.QueryFlux(w, req, org, qr)
+	if err != nil {
+		log.Printf("flux query error: %s, query: %s, spec: %s, org: %s, client: %s", err, qr.Query, qr.Spec, org, req.RemoteAddr)
+		hs.WriteError(w, req, http.StatusBadRequest, err.Error())
+		return
+	}
+	if hs.queryTracing {
+		log.Printf("flux query: %s, spec: %s, org: %s, client: %s", qr.Query, qr.Spec, org, req.RemoteAddr)
+	}
+}
+
+func (hs *HttpService) HandlerWrite(w http.ResponseWriter, req *http.Request) {
 	if !hs.checkMethodAndAuth(w, req, "POST") {
 		return
 	}
@@ -86,98 +164,27 @@ func (hs *HttpService) HandlerWriteV1(w http.ResponseWriter, req *http.Request) 
 			precision = "ns"
 		}
 	default:
-		hs.WriteError(w, req, 400, fmt.Sprintf("invalid precision %q (use n, ns, u, ms, s, m or h)", precision))
+		hs.WriteError(w, req, http.StatusBadRequest, fmt.Sprintf("invalid precision %q (use n, ns, u, ms, s, m or h)", precision))
 		return
 	}
 
 	db := req.URL.Query().Get("db")
 	if db == "" {
-		hs.WriteError(w, req, 400, "database not found")
+		hs.WriteError(w, req, http.StatusBadRequest, "database not found")
 		return
 	}
 	rp := req.URL.Query().Get("rp")
 
-	body := req.Body
-	if req.Header.Get("Content-Encoding") == "gzip" {
-		b, err := gzip.NewReader(body)
-		if err != nil {
-			hs.WriteError(w, req, 400, "unable to decode gzip body")
-			return
-		}
-		defer b.Close()
-		body = b
-	}
-	p, err := ioutil.ReadAll(body)
+	org, bucket, err := hs.ip.DBRP2OrgBucket(db, rp)
 	if err != nil {
-		hs.WriteError(w, req, 400, err.Error())
+		hs.WriteError(w, req, http.StatusBadRequest, "db/rp not mapping")
 		return
 	}
 
-	err = hs.ip.WriteV1(p, db, rp, precision)
-	if err == nil {
-		hs.WriteHeader(w, 204)
-	}
-	if hs.writeTracing {
-		log.Printf("write: %s %s %s %s, client: %s", db, rp, precision, p, req.RemoteAddr)
-	}
+	hs.handlerWrite(org, bucket, precision, w, req)
 }
 
-func (hs *HttpService) HandlerQuery(w http.ResponseWriter, req *http.Request) {
-	if !hs.checkMethodAndAuth(w, req, "POST") {
-		return
-	}
-
-	// use org, ignore orgID
-	org := req.URL.Query().Get("org")
-	if org == "" {
-		hs.WriteError(w, req, 400, "org not found")
-		return
-	}
-
-	var contentType = "application/json"
-	if ct := req.Header.Get("Content-Type"); ct != "" {
-		contentType = ct
-	}
-	mt, _, err := mime.ParseMediaType(contentType)
-	if err != nil {
-		hs.WriteError(w, req, 400, err.Error())
-		return
-	}
-	rbody, err := ioutil.ReadAll(req.Body)
-	if err != nil {
-		hs.WriteError(w, req, 400, err.Error())
-		return
-	}
-	var query string
-	switch mt {
-	case "application/vnd.flux":
-		query = string(rbody)
-	case "application/json":
-		fallthrough
-	default:
-		var r struct {
-			Query string `json:"query"`
-		}
-		if err = json.Unmarshal(rbody, &r); err != nil {
-			hs.WriteError(w, req, 400, fmt.Sprintf("failed parsing request body as JSON; if sending a raw Flux script, set 'Content-Type: application/vnd.flux' in your request headers: %s", err))
-			return
-		}
-		query = r.Query
-	}
-
-	req.Body = ioutil.NopCloser(bytes.NewBuffer(rbody))
-	err = hs.ip.Query(w, req, org, query)
-	if err != nil {
-		log.Printf("query error: %s, org: %s, query: %s, client: %s", err, org, query, req.RemoteAddr)
-		hs.WriteError(w, req, 400, err.Error())
-		return
-	}
-	if hs.queryTracing {
-		log.Printf("org: %s, query: %s, client: %s", org, query, req.RemoteAddr)
-	}
-}
-
-func (hs *HttpService) HandlerWrite(w http.ResponseWriter, req *http.Request) {
+func (hs *HttpService) HandlerWriteV2(w http.ResponseWriter, req *http.Request) {
 	if !hs.checkMethodAndAuth(w, req, "POST") {
 		return
 	}
@@ -190,27 +197,31 @@ func (hs *HttpService) HandlerWrite(w http.ResponseWriter, req *http.Request) {
 			precision = "ns"
 		}
 	default:
-		hs.WriteError(w, req, 400, fmt.Sprintf("invalid precision %q (use ns, us, ms and s)", precision))
+		hs.WriteError(w, req, http.StatusBadRequest, fmt.Sprintf("invalid precision %q (use ns, us, ms or s)", precision))
 		return
 	}
 
 	// use org and bucket, ignore orgID
 	org := req.URL.Query().Get("org")
 	if org == "" {
-		hs.WriteError(w, req, 400, "org not found")
+		hs.WriteError(w, req, http.StatusBadRequest, "org not found")
 		return
 	}
 	bucket := req.URL.Query().Get("bucket")
 	if bucket == "" {
-		hs.WriteError(w, req, 400, "bucket not found")
+		hs.WriteError(w, req, http.StatusBadRequest, "bucket not found")
 		return
 	}
 
+	hs.handlerWrite(org, bucket, precision, w, req)
+}
+
+func (hs *HttpService) handlerWrite(org, bucket, precision string, w http.ResponseWriter, req *http.Request) {
 	body := req.Body
 	if req.Header.Get("Content-Encoding") == "gzip" {
 		b, err := gzip.NewReader(body)
 		if err != nil {
-			hs.WriteError(w, req, 400, "unable to decode gzip body")
+			hs.WriteError(w, req, http.StatusBadRequest, "unable to decode gzip body")
 			return
 		}
 		defer b.Close()
@@ -218,16 +229,16 @@ func (hs *HttpService) HandlerWrite(w http.ResponseWriter, req *http.Request) {
 	}
 	p, err := ioutil.ReadAll(body)
 	if err != nil {
-		hs.WriteError(w, req, 400, err.Error())
+		hs.WriteError(w, req, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	err = hs.ip.Write(p, org, bucket, precision)
 	if err == nil {
-		hs.WriteHeader(w, 204)
+		w.WriteHeader(http.StatusNoContent)
 	}
 	if hs.writeTracing {
-		log.Printf("write: %s %s %s %s, client: %s", org, bucket, precision, p, req.RemoteAddr)
+		log.Printf("write line protocol, org: %s, bucket: %s, precision: %s, data: %s, client: %s", org, bucket, precision, p, req.RemoteAddr)
 	}
 }
 
@@ -235,7 +246,16 @@ func (hs *HttpService) HandlerHealth(w http.ResponseWriter, req *http.Request) {
 	if !hs.checkMethodAndAuth(w, req, "GET") {
 		return
 	}
-	hs.Write(w, req, 200, hs.ip.GetHealth())
+	resp := map[string]interface{}{
+		"name":    "influx-proxy",
+		"message": "ready for queries and writes",
+		"status":  "pass",
+		"checks":  []string{},
+		"circles": hs.ip.GetHealth(),
+		"version": backend.Version,
+		"commit":  backend.GitCommit,
+	}
+	hs.Write(w, req, http.StatusOK, resp)
 }
 
 func (hs *HttpService) HandlerReplica(w http.ResponseWriter, req *http.Request) {
@@ -257,19 +277,19 @@ func (hs *HttpService) HandlerReplica(w http.ResponseWriter, req *http.Request) 
 				"circle":  map[string]interface{}{"id": c.CircleId, "name": c.Name},
 			}
 		}
-		hs.Write(w, req, 200, data)
+		hs.Write(w, req, http.StatusOK, data)
 	} else {
-		hs.WriteError(w, req, 400, "invalid org, bucket or meas")
+		hs.WriteError(w, req, http.StatusBadRequest, "invalid org, bucket or meas")
 	}
 }
 
 func (hs *HttpService) Write(w http.ResponseWriter, req *http.Request, status int, data interface{}) {
-	if status >= 400 {
+	if status/100 >= 4 {
 		hs.WriteError(w, req, status, data.(string))
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	hs.WriteHeader(w, status)
+	w.WriteHeader(status)
 	pretty := req.URL.Query().Get("pretty") == "true"
 	w.Write(util.MarshalJSON(data, pretty))
 }
@@ -277,25 +297,20 @@ func (hs *HttpService) Write(w http.ResponseWriter, req *http.Request, status in
 func (hs *HttpService) WriteError(w http.ResponseWriter, req *http.Request, status int, err string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("X-Influxdb-Error", err)
-	hs.WriteHeader(w, status)
+	w.WriteHeader(status)
 	rsp := backend.ResponseFromError(err)
 	pretty := req.URL.Query().Get("pretty") == "true"
 	w.Write(util.MarshalJSON(rsp, pretty))
 }
 
 func (hs *HttpService) WriteBody(w http.ResponseWriter, body []byte) {
-	hs.WriteHeader(w, 200)
+	w.WriteHeader(http.StatusOK)
 	w.Write(body)
 }
 
 func (hs *HttpService) WriteText(w http.ResponseWriter, status int, text string) {
-	hs.WriteHeader(w, status)
-	w.Write([]byte(text + "\n"))
-}
-
-func (hs *HttpService) WriteHeader(w http.ResponseWriter, status int) {
-	w.Header().Set("X-Influxdb-Version", backend.Version)
 	w.WriteHeader(status)
+	w.Write([]byte(text + "\n"))
 }
 
 func (hs *HttpService) checkMethodAndAuth(w http.ResponseWriter, req *http.Request, methods ...string) bool {
@@ -308,7 +323,7 @@ func (hs *HttpService) checkMethod(w http.ResponseWriter, req *http.Request, met
 			return true
 		}
 	}
-	hs.WriteError(w, req, 405, "method not allow")
+	hs.WriteError(w, req, http.StatusMethodNotAllowed, "method not allow")
 	return false
 }
 
@@ -320,6 +335,6 @@ func (hs *HttpService) checkAuth(w http.ResponseWriter, req *http.Request) bool 
 	if token == hs.token {
 		return true
 	}
-	hs.WriteError(w, req, 401, "authentication failed")
+	hs.WriteError(w, req, http.StatusUnauthorized, "authentication failed")
 	return false
 }

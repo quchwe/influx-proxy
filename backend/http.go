@@ -244,7 +244,7 @@ func (hb *HttpBackend) WriteStream(org, bucket string, stream io.Reader, compres
 	return
 }
 
-func (hb *HttpBackend) Query(req *http.Request, w http.ResponseWriter) (err error) {
+func (hb *HttpBackend) QueryFlux(req *http.Request, w http.ResponseWriter) (err error) {
 	q := url.Values{}
 	q.Set("org", req.URL.Query().Get("org"))
 	hb.SetAuthorization(req)
@@ -257,7 +257,7 @@ func (hb *HttpBackend) Query(req *http.Request, w http.ResponseWriter) (err erro
 
 	resp, err := hb.transport.RoundTrip(req)
 	if err != nil {
-		log.Printf("query error: %s", err)
+		log.Printf("flux query error: %s", err)
 		return
 	}
 	defer resp.Body.Close()
@@ -266,7 +266,7 @@ func (hb *HttpBackend) Query(req *http.Request, w http.ResponseWriter) (err erro
 
 	p, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Printf("read body error: %s", err)
+		log.Printf("flux read body error: %s", err)
 		return
 	}
 	w.WriteHeader(resp.StatusCode)
@@ -274,7 +274,7 @@ func (hb *HttpBackend) Query(req *http.Request, w http.ResponseWriter) (err erro
 	return
 }
 
-func (hb *HttpBackend) QueryV1(req *http.Request, w http.ResponseWriter, decompress bool) (qr *QueryResult) {
+func (hb *HttpBackend) Query(req *http.Request, w http.ResponseWriter, decompress bool) (qr *QueryResult) {
 	qr = &QueryResult{}
 	if len(req.Form) == 0 {
 		req.Form = url.Values{}

@@ -61,6 +61,7 @@ type ProxyConfig struct {
 	WriteTracing    bool            `mapstructure:"write_tracing"`
 	QueryTracing    bool            `mapstructure:"query_tracing"`
 	Token           string          `mapstructure:"token"`
+	PprofEnabled    bool            `mapstructure:"pprof_enabled"`
 	HTTPSEnabled    bool            `mapstructure:"https_enabled"`
 	HTTPSCert       string          `mapstructure:"https_cert"`
 	HTTPSKey        string          `mapstructure:"https_key"`

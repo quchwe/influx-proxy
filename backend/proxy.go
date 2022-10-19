@@ -5,9 +5,7 @@
 package backend
 
 import (
-	"bytes"
 	"fmt"
-	"io"
 	"log"
 	"math/rand"
 	"net/http"
@@ -89,7 +87,26 @@ func (ip *Proxy) GetHealth() []interface{} {
 	return health
 }
 
-func (ip *Proxy) QueryV1(w http.ResponseWriter, req *http.Request) (body []byte, err error) {
+func (ip *Proxy) QueryFlux(w http.ResponseWriter, req *http.Request, org string, qr *QueryRequest) (err error) {
+	var bucket, meas string
+	if qr.Query != "" {
+		bucket, meas, err = ScanQuery(qr.Query)
+	} else if qr.Spec != nil {
+		bucket, meas, err = ScanSpec(qr.Spec)
+	}
+	if err != nil {
+		return
+	}
+	if bucket == "" {
+		return ErrGetBucket
+	}
+	if meas == "" {
+		return ErrGetMeasurement
+	}
+	return QueryFlux(w, req, ip, org, bucket, meas)
+}
+
+func (ip *Proxy) Query(w http.ResponseWriter, req *http.Request) (body []byte, err error) {
 	q := strings.TrimSpace(req.FormValue("q"))
 	if q == "" {
 		return nil, ErrEmptyQuery
@@ -125,53 +142,28 @@ func (ip *Proxy) QueryV1(w http.ResponseWriter, req *http.Request) (body []byte,
 	return nil, ErrIllegalQL
 }
 
-func (ip *Proxy) Query(w http.ResponseWriter, req *http.Request, org, query string) (err error) {
-	query = strings.TrimSpace(query)
-	if query == "" {
-		return ErrEmptyQuery
-	}
-	bucket, meas, err := ScanQuery(query)
-	if err != nil {
-		return
-	}
-	if bucket != "" && meas != "" {
-		return QueryWithFlux(w, req, ip, org, bucket, meas)
-	} else if bucket == "" {
-		return ErrGetBucket
-	} else if meas == "" {
-		return ErrGetMeasurement
-	}
-	return ErrIllegalFluxQuery
-}
-
-func (ip *Proxy) WriteV1(p []byte, db, rp, precision string) (err error) {
-	org, bucket, err := ip.DBRP2OrgBucket(db, rp)
-	if err != nil {
-		log.Printf("write v1 db/rp not mapping, db: %s, rp: %s", db, rp)
-		return
-	}
-	return ip.Write(p, org, bucket, precision)
-}
-
 func (ip *Proxy) Write(p []byte, org, bucket, precision string) (err error) {
-	buf := bytes.NewBuffer(p)
-	var line []byte
-	for {
-		line, err = buf.ReadBytes('\n')
-		switch err {
-		default:
-			log.Printf("error: %s", err)
-			return
-		case io.EOF, nil:
-			err = nil
-		}
-		if len(line) == 0 {
-			break
-		}
-		line = bytes.TrimSpace(line)
-		if len(line) == 0 {
+	var (
+		pos   int
+		block []byte
+	)
+	for pos < len(p) {
+		pos, block = ScanLine(p, pos)
+		pos++
+
+		if len(block) == 0 {
 			continue
 		}
+		start := SkipWhitespace(block, 0)
+		if start >= len(block) || block[start] == '#' {
+			continue
+		}
+		if block[len(block)-1] == '\n' {
+			block = block[:len(block)-1]
+		}
+
+		line := make([]byte, len(block[start:]))
+		copy(line, block[start:])
 		ip.WriteRow(line, org, bucket, precision)
 	}
 	return
@@ -185,7 +177,7 @@ func (ip *Proxy) WriteRow(line []byte, org, bucket, precision string) {
 		return
 	}
 	if !RapidCheck(nanoLine[len(meas):]) {
-		log.Printf("invalid format, drop data: %s %s %s %s", org, bucket, precision, string(line))
+		log.Printf("invalid format, org: %s, bucket: %s, precision: %s, line: %s", org, bucket, precision, string(line))
 		return
 	}
 
@@ -200,7 +192,7 @@ func (ip *Proxy) WriteRow(line []byte, org, bucket, precision string) {
 	for _, be := range backends {
 		err = be.WritePoint(point)
 		if err != nil {
-			log.Printf("write data to buffer error: %s, %s, %s, %s, %s, %s", err, be.Url, org, bucket, precision, string(line))
+			log.Printf("write data to buffer error: %s, url: %s, org: %s, bucket: %s, precision: %s, line: %s", err, be.Url, org, bucket, precision, string(line))
 		}
 	}
 }

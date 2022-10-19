@@ -186,14 +186,14 @@ func (ib *Backend) FlushBuffer(org, bucket string) {
 				log.Printf("bad entity, drop partial data")
 				return
 			default:
-				log.Printf("write http error: %s %s %s, length: %d", ib.Url, org, bucket, len(p))
+				log.Printf("write http error, url: %s, org: %s, bucket: %s, plen: %d", ib.Url, org, bucket, len(p))
 			}
 		}
 
 		b := bytes.Join([][]byte{[]byte(url.QueryEscape(org)), []byte(url.QueryEscape(bucket)), p}, []byte{' '})
 		err = ib.fb.Write(b)
 		if err != nil {
-			log.Printf("write data to file error with org: %s, bucket: %s, length: %d error: %s", org, bucket, len(p), err)
+			log.Printf("write db and data to file error: %s, org: %s, bucket: %s, plen: %d", err, org, bucket, len(p))
 			return
 		}
 	})
@@ -274,7 +274,7 @@ func (ib *Backend) Rewrite() (err error) {
 		log.Printf("bad entity, drop partial data")
 		err = nil
 	default:
-		log.Printf("rewrite http error: %s %s %s, length: %d", ib.Url, org, bucket, len(p[1]))
+		log.Printf("rewrite http error, url: %s, org: %s, bucket: %s, plen: %d", ib.Url, org, bucket, len(p[1]))
 
 		err = ib.fb.RollbackMeta()
 		if err != nil {

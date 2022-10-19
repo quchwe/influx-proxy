@@ -9,6 +9,7 @@ write_timeout = 10
 write_tracing = false
 query_tracing = false
 token = ""
+pprof_enabled = false
 https_enabled = false
 https_cert = ""
 https_key = ""

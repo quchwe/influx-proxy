@@ -2,9 +2,9 @@
 
 This project adds a basic high availability and consistent hash layer to InfluxDB v2.
 
-NOTE: influx-proxy must be built with Go 1.14+ with Go module support, don't implement udp.
+NOTE: influx-proxy must be built with Go 1.16+ with Go module support, don't implement udp.
 
-NOTE: [InfluxDB Cluster](https://github.com/chengshiwen/influxdb-cluster) for replacing [InfluxDB Enterprise](https://docs.influxdata.com/enterprise_influxdb/v1.8/) is coming, which is better than InfluxDB Proxy.
+NOTE: [InfluxDB Cluster](https://github.com/chengshiwen/influxdb-cluster) - open source alternative to [InfluxDB Enterprise](https://docs.influxdata.com/enterprise_influxdb/v1.8/) has been released, which is better than InfluxDB Proxy.
 
 ## Why
 
@@ -18,25 +18,28 @@ Forked from the above InfluxDB Proxy, after many improvements and optimizations,
 
 Since the InfluxDB Proxy v1 is limited by the only `ONE` database and the `KEYMAPS` configuration, we refactored [InfluxDB Proxy v2](https://github.com/chengshiwen/influx-proxy) with high availability and consistent hash, which supports multiple databases and tools to rebalance, recovery, resync and cleanup.
 
-[InfluxDB Proxy v3](https://github.com/chengshiwen/influx-proxy/tree/influxdb-v2) is aimed at [InfluxDB v2](https://docs.influxdata.com/influxdb/v2.1/).
+[InfluxDB Proxy v3](https://github.com/chengshiwen/influx-proxy/tree/influxdb-v2) is aimed at [InfluxDB v2](https://docs.influxdata.com/influxdb/v2.4/).
 
 ## Features
 
-* Support query and write v2.
-* Support query and write v1 compatibility.
+* Support query and write.
+* Support /api/v2 endpoints.
+* Support flux language query.
+* Support some cluster influxql.
+* Filter some dangerous influxql.
 * Transparent for client, like cluster for client.
 * Cache data to file when write failed, then rewrite.
 * Support data sharding with consistent hash.
 * Load config file and no longer depend on python and redis.
 * Support influxdb-java, and influxdb shell.
 * Support authentication and https.
-* Support health status query.
+* Support health status check.
 * Support version display.
 * Support gzip.
 
 ## Requirements
 
-* Golang >= 1.14 with Go module support
+* Golang >= 1.16 with Go module support
 * InfluxDB >= 2.0 (For InfluxDB 1.x, please visit branch [master](https://github.com/chengshiwen/influx-proxy/tree/master))
 
 ## Usage
@@ -80,6 +83,8 @@ $ # build current platform
 $ make build
 $ # build linux amd64
 $ make linux
+$ # cross-build all platforms
+$ make release
 ```
 
 ## Development
@@ -93,10 +98,6 @@ $ ./script/write.sh  # write data
 $ ./script/query.sh  # query data
 $ ./script/remove.sh # remove 4 influxdb instances
 ```
-
-## Tutorial
-
-[Chinese](https://git.io/influx-proxy-wiki)
 
 ## Description
 
@@ -164,19 +165,20 @@ The configuration settings are as follows:
 * `write_tracing`: enable logging for the write, default is `false`
 * `query_tracing`: enable logging for the query, default is `false`
 * `token`: proxy token, default is `empty` which means no auth
+* `pprof_enabled`: enable `/debug/pprof` HTTP endpoint, default is `false`
 * `https_enabled`: enable https, default is `false`
 * `https_cert`: the ssl certificate to use when https is enabled, default is `empty`
 * `https_key`: use a separate private key location, default is `empty`
 
 ## Write
 
-* [/api/v2/write](https://docs.influxdata.com/influxdb/v2.1/api/#operation/PostWrite) v2 supported
-* [/write](https://docs.influxdata.com/influxdb/v2.1/api/v1-compatibility/#operation/PostWriteV1) v1 compatibility supported
+* [/api/v2/write](https://docs.influxdata.com/influxdb/v2.4/api/#operation/PostWrite) v2 supported
+* [/write](https://docs.influxdata.com/influxdb/v2.4/api/v1-compatibility/#operation/PostWriteV1) v1 compatibility supported
 
 ## Query
 
-* [/api/v2/query](https://docs.influxdata.com/influxdb/v2.1/api/#operation/PostQuery) v2 supported
-* [/query](https://docs.influxdata.com/influxdb/v2.1/api/v1-compatibility/#operation/PostQueryV1) v1 compatibility supported
+* [/api/v2/query](https://docs.influxdata.com/influxdb/v2.4/api/#operation/PostQuery) v2 supported
+* [/query](https://docs.influxdata.com/influxdb/v2.4/api/v1-compatibility/#operation/PostQueryV1) v1 compatibility supported
 
 ### /api/v2/query
 
@@ -202,7 +204,7 @@ Note: `dbrp mapping` must be specified like
 }
 ```
 
-Only support match the following commands, more details please see [InfluxQL support](https://docs.influxdata.com/influxdb/v2.1/query-data/influxql/#influxql-support).
+Only support match the following commands, more details please see [InfluxQL support](https://docs.influxdata.com/influxdb/v2.4/query-data/influxql/#influxql-support).
 
 * `select from` (read-only)
 * `show databases`
@@ -212,7 +214,8 @@ Only support match the following commands, more details please see [InfluxQL sup
 * `show field keys`
 * `delete from`
 * `drop measurement`
-* `on clause` (the `db` parameter takes precedence when the parameter is set in `/query` http endpoint)
+* `on clause`
+* `from clause` like `from <db>.<rp>.<measurement>`
 
 ## HTTP Endpoints
 
