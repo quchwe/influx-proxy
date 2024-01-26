@@ -267,7 +267,7 @@ func (hs *HttpService) HandlerReplica(w http.ResponseWriter, req *http.Request) 
 	bucket := req.URL.Query().Get("bucket")
 	meas := req.URL.Query().Get("meas")
 	if org != "" && bucket != "" && meas != "" {
-		key := backend.GetKey(org, bucket, meas)
+		key := hs.ip.GetKey(org, bucket, meas)
 		backends := hs.ip.GetBackends(key)
 		data := make([]map[string]interface{}, len(backends))
 		for i, b := range backends {

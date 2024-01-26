@@ -48,23 +48,24 @@ type DBRPConfig struct {
 }
 
 type ProxyConfig struct {
-	Circles         []*CircleConfig `mapstructure:"circles"`
-	DBRP            *DBRPConfig     `mapstructure:"dbrp"`
-	ListenAddr      string          `mapstructure:"listen_addr"`
-	DataDir         string          `mapstructure:"data_dir"`
-	FlushSize       int             `mapstructure:"flush_size"`
-	FlushTime       int             `mapstructure:"flush_time"`
-	CheckInterval   int             `mapstructure:"check_interval"`
-	RewriteInterval int             `mapstructure:"rewrite_interval"`
-	ConnPoolSize    int             `mapstructure:"conn_pool_size"`
-	WriteTimeout    int             `mapstructure:"write_timeout"`
-	WriteTracing    bool            `mapstructure:"write_tracing"`
-	QueryTracing    bool            `mapstructure:"query_tracing"`
-	Token           string          `mapstructure:"token"`
-	PprofEnabled    bool            `mapstructure:"pprof_enabled"`
-	HTTPSEnabled    bool            `mapstructure:"https_enabled"`
-	HTTPSCert       string          `mapstructure:"https_cert"`
-	HTTPSKey        string          `mapstructure:"https_key"`
+	Circles            []*CircleConfig `mapstructure:"circles"`
+	DBRP               *DBRPConfig     `mapstructure:"dbrp"`
+	ListenAddr         string          `mapstructure:"listen_addr"`
+	DataDir            string          `mapstructure:"data_dir"`
+	FlushSize          int             `mapstructure:"flush_size"`
+	FlushTime          int             `mapstructure:"flush_time"`
+	CheckInterval      int             `mapstructure:"check_interval"`
+	RewriteInterval    int             `mapstructure:"rewrite_interval"`
+	ConnPoolSize       int             `mapstructure:"conn_pool_size"`
+	WriteTimeout       int             `mapstructure:"write_timeout"`
+	WriteTracing       bool            `mapstructure:"write_tracing"`
+	QueryTracing       bool            `mapstructure:"query_tracing"`
+	Token              string          `mapstructure:"token"`
+	PprofEnabled       bool            `mapstructure:"pprof_enabled"`
+	HTTPSEnabled       bool            `mapstructure:"https_enabled"`
+	HTTPSCert          string          `mapstructure:"https_cert"`
+	HTTPSKey           string          `mapstructure:"https_key"`
+	HashKeyMeasureOnly bool            `mapstructure:"hash_key_measure_only"`
 }
 
 func NewFileConfig(cfgfile string) (cfg *ProxyConfig, err error) {

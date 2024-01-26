@@ -17,8 +17,9 @@ import (
 )
 
 type Proxy struct {
-	Circles []*Circle
-	dbrps   map[string][]string
+	Circles            []*Circle
+	dbrps              map[string][]string
+	HashKeyMeasureOnly bool
 }
 
 func NewProxy(cfg *ProxyConfig) (ip *Proxy) {
@@ -37,8 +38,18 @@ func NewProxy(cfg *ProxyConfig) (ip *Proxy) {
 	for key, value := range cfg.DBRP.Mapping {
 		ip.dbrps[key] = strings.Split(value, cfg.DBRP.Separator)
 	}
+	if cfg.HashKeyMeasureOnly {
+		ip.HashKeyMeasureOnly = cfg.HashKeyMeasureOnly
+	}
 	rand.Seed(time.Now().UnixNano())
 	return
+}
+
+func (ip *Proxy) GetKey(org, bucket, measure string) string {
+	if ip.HashKeyMeasureOnly {
+		return GetKey(measure)
+	}
+	return GetKey(org, bucket, measure)
 }
 
 func GetKey(elems ...string) string {
@@ -181,7 +192,7 @@ func (ip *Proxy) WriteRow(line []byte, org, bucket, precision string) {
 		return
 	}
 
-	key := GetKey(org, bucket, meas)
+	key := ip.GetKey(org, bucket, meas)
 	backends := ip.GetBackends(key)
 	if len(backends) == 0 {
 		log.Printf("write data error: can't get backends, org: %s, bucket: %s, meas: %s", org, bucket, meas)

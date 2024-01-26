@@ -13,7 +13,8 @@ pprof_enabled = false
 https_enabled = false
 https_cert = ""
 https_key = ""
-
+# only measurement can be used for hash key
+hash_key_measure_only = true
 [dbrp]
 separator = "/"
 
