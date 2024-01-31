@@ -17,6 +17,8 @@ import (
 	"github.com/influxdata/influxdb1-client/models"
 )
 
+var HashKeyMeasureOnly = false
+
 type Proxy struct {
 	Circles []*Circle
 	dbSet   util.Set
@@ -38,11 +40,17 @@ func NewProxy(cfg *ProxyConfig) (ip *Proxy) {
 	for _, db := range cfg.DBList {
 		ip.dbSet.Add(db)
 	}
+	if cfg.HashKeyMeasureOnly {
+		HashKeyMeasureOnly = true
+	}
 	rand.Seed(time.Now().UnixNano())
 	return
 }
 
 func GetKey(db, meas string) string {
+	if HashKeyMeasureOnly {
+		return meas
+	}
 	var b strings.Builder
 	b.Grow(len(db) + len(meas) + 1)
 	b.WriteString(db)

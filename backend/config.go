@@ -42,28 +42,29 @@ type CircleConfig struct {
 }
 
 type ProxyConfig struct {
-	Circles         []*CircleConfig `mapstructure:"circles"`
-	ListenAddr      string          `mapstructure:"listen_addr"`
-	DBList          []string        `mapstructure:"db_list"`
-	DataDir         string          `mapstructure:"data_dir"`
-	TLogDir         string          `mapstructure:"tlog_dir"`
-	HashKey         string          `mapstructure:"hash_key"`
-	FlushSize       int             `mapstructure:"flush_size"`
-	FlushTime       int             `mapstructure:"flush_time"`
-	CheckInterval   int             `mapstructure:"check_interval"`
-	RewriteInterval int             `mapstructure:"rewrite_interval"`
-	ConnPoolSize    int             `mapstructure:"conn_pool_size"`
-	WriteTimeout    int             `mapstructure:"write_timeout"`
-	IdleTimeout     int             `mapstructure:"idle_timeout"`
-	Username        string          `mapstructure:"username"`
-	Password        string          `mapstructure:"password"`
-	AuthEncrypt     bool            `mapstructure:"auth_encrypt"`
-	WriteTracing    bool            `mapstructure:"write_tracing"`
-	QueryTracing    bool            `mapstructure:"query_tracing"`
-	PprofEnabled    bool            `mapstructure:"pprof_enabled"`
-	HTTPSEnabled    bool            `mapstructure:"https_enabled"`
-	HTTPSCert       string          `mapstructure:"https_cert"`
-	HTTPSKey        string          `mapstructure:"https_key"`
+	Circles            []*CircleConfig `mapstructure:"circles"`
+	ListenAddr         string          `mapstructure:"listen_addr"`
+	DBList             []string        `mapstructure:"db_list"`
+	DataDir            string          `mapstructure:"data_dir"`
+	TLogDir            string          `mapstructure:"tlog_dir"`
+	HashKey            string          `mapstructure:"hash_key"`
+	FlushSize          int             `mapstructure:"flush_size"`
+	FlushTime          int             `mapstructure:"flush_time"`
+	CheckInterval      int             `mapstructure:"check_interval"`
+	RewriteInterval    int             `mapstructure:"rewrite_interval"`
+	ConnPoolSize       int             `mapstructure:"conn_pool_size"`
+	WriteTimeout       int             `mapstructure:"write_timeout"`
+	IdleTimeout        int             `mapstructure:"idle_timeout"`
+	Username           string          `mapstructure:"username"`
+	Password           string          `mapstructure:"password"`
+	AuthEncrypt        bool            `mapstructure:"auth_encrypt"`
+	WriteTracing       bool            `mapstructure:"write_tracing"`
+	QueryTracing       bool            `mapstructure:"query_tracing"`
+	PprofEnabled       bool            `mapstructure:"pprof_enabled"`
+	HTTPSEnabled       bool            `mapstructure:"https_enabled"`
+	HTTPSCert          string          `mapstructure:"https_cert"`
+	HTTPSKey           string          `mapstructure:"https_key"`
+	HashKeyMeasureOnly bool            `mapstructure:"hash_key_measure_only"`
 }
 
 func NewFileConfig(cfgfile string) (cfg *ProxyConfig, err error) {
